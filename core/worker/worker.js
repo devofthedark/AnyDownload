@@ -1,0 +1,139 @@
+importScripts("/rpc.js")
+importScripts("/libs/mediabunny.js")
+importScripts("/core/worker/mediabunny-merge.js")
+const worker = createNode("worker");
+worker.connect("iframe", workerLink(self));
+worker.route("sw", "iframe");
+worker.route("sandbox", "iframe");
+worker.route("potoken", "iframe")
+ORIGIN = self.origin
+const NS = 'ytx';
+self.addEventListener('message', function bridgeHandshake(e) {
+    console.log("CONNECT worker")
+  if (e.data?.[NS] !== 'bridge') return;
+  const port = e.ports[0];
+  worker.connect('content', messagePortLink(port));
+});
+// thin wrappers around RPC calls to give to python
+async function jsc(code) {
+    return await worker.call("sandbox", "jsc", { code: code });
+}
+async function mint_potoken(content_binding, mint_cold_start_token, mint_error_token) {
+    const c_bind = [];
+    console.log(content_binding[0]?.constructor?.name, content_binding[1]?.constructor?.name, mint_cold_start_token, mint_error_token)
+    c_bind.push(content_binding[0] === undefined ? null : content_binding[0])
+    c_bind.push(content_binding[1] === undefined ? null : content_binding[1])
+    return await worker.call("potoken", "potoken", {c_bind, mint_cold_start_token, mint_error_token})
+}
+async function python_fetch(request, proxy) {
+    if (proxy) {
+        await worker.waitForLink("content");
+        return await worker.call("content", "proxyfetch", request);
+    } else {
+        let { method, url, body, headers, credentials } = request;
+        const response = await fetch(url, {
+        method: method,
+        headers: headers,
+        body: body === null ? undefined : body,
+        credentials: credentials
+        })
+        console.log(response.headers)
+        return {stream: response.body, status: response.status, headers: [...response.headers.entries()]}
+    }
+}
+async function cur_url() {
+    return await worker.call("content", "cur_url", {});
+}
+async function progress_hook(d) {
+    // `d` is a PyProxy (PyDict) borrowed for the duration of this call — pull out
+    // plain values now (auto-converted at the get() boundary) rather than trying
+    // to structured-clone the proxy itself, which postMessage can't carry.
+    worker.notify("iframe", "dl_progress", {
+        status: d.get("status"),
+        filename: d.get("filename"),
+        downloaded_bytes: d.get("downloaded_bytes"),
+        total_bytes: d.get("total_bytes"),
+        total_bytes_estimate: d.get("total_bytes_estimate"),
+        speed: d.get("speed"),
+        eta: d.get("eta"),
+        elapsed: d.get("elapsed"),
+        fragment_index: d.get("fragment_index"),
+        fragment_count: d.get("fragment_count"),
+    });
+}
+
+
+
+let pyodide;
+
+async function prepare() {
+    await worker.waitForLink("content");
+    const cookies = await worker.call("content", "cookies", {});
+    console.log(cookies);
+    importScripts(
+        "/libs/pyodide/pyodide.js"
+    )
+    YT_DLP_VER = [2026, 8, 19]
+    pyodide = await loadPyodide({
+        indexURL: "/libs/pyodide",
+        stdLibURL: "/libs/pyodide/python_stdlib.zip",
+        packages: [
+            `/libs/pyodide/yt_dlp-${YT_DLP_VER.join(".")}-py3-none-any.whl`,
+            "/libs/pyodide/yt_dlp_ejs-0.8.0-py3-none-any.whl"
+        ]
+    })
+
+    await pyodide.FS.writeFile("/cookies.txt", cookies);
+    pyodide.registerJsModule('mb_bridge', createMerger('_yt_dlp_OPFS_store', {
+        onProgress: ({ jobId, progress }) => worker.notify('iframe', 'muxProgress', { jobId, progress }),
+    }));
+}
+
+// dl.py registers handlers with yt-dlp, which can only happen once, so only run it once
+let setupPromise;
+function setupPython() {
+    if (!setupPromise) {
+        setupPromise = (async () => {
+            console.log("start python (good luck...)")
+            await pyodide.runPythonAsync(await (await fetch("/core/worker/dl.py")).text())
+        })();
+        setupPromise.catch(() => { setupPromise = undefined; });
+    }
+    return setupPromise;
+}
+
+async function listFormats() {
+    await setupPython();
+    return JSON.parse(await pyodide.runPythonAsync("list_formats()"));
+}
+
+async function runDownload(format) {
+    await setupPython();
+    const root = await navigator.storage.getDirectory();
+    // Clear out the previous download's files here rather than right after handing them
+    // off: the browser reads the blob lazily, so deleting the OPFS file too early can
+    // cut the saved file short. dl.py's download() recreates the directory.
+    await root.removeEntry('_yt_dlp_OPFS_store', { recursive: true }).catch(() => {});
+    pyodide.globals.set("_web_format", format || "");
+    await pyodide.runPythonAsync("download(_web_format)");
+    const store = await root.getDirectoryHandle("_yt_dlp_OPFS_store");
+    for await (const [name, handle] of store.entries()) {
+        if (handle.kind !== 'file') continue;
+        const file = await handle.getFile();
+        await worker.call('iframe', 'dl', {file: file, name:name});
+    }
+}
+
+worker.handle("formats", async () => {
+    return await listFormats();
+});
+
+worker.handle("start", async ({ format } = {}) => {
+    await runDownload(format);
+});
+
+async function main() {
+    await prepare();
+    worker.notify('iframe', 'ready', {});
+}
+main();

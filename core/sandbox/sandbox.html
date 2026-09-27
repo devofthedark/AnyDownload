@@ -1,0 +1,48 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta http-equiv="Content-Security-Policy"
+    content="script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh;" />
+  <script src="/rpc.js"></script>
+  <script type="module">
+    const sandbox = createNode("sandbox");
+    sandbox.connect("iframe", windowLink(window.parent, "*", { accept: "*" }));
+    sandbox.handle("jsc", async (params, { signal }) => {
+      console.debug("[Sandbox] got JS challenge solve request");
+      let code = params.code;
+      const logs = [];
+      let url;
+      try {
+
+        // hijack console.log
+        const log = (...args) => {
+          logs.push(args.join(" "));
+        }
+        console.log = log;
+        console.warn = log;
+        console.error = log;
+
+
+        code = code.replaceAll("await import('npm:", "await import('https://esm.sh/");
+        const blob = new Blob([code], { type: "text/javascript" });
+        url = URL.createObjectURL(blob);
+        await import(url);
+      } finally {
+        URL.revokeObjectURL(url);
+        console.debug("[Sandbox] JS Challenge solved");
+        return logs.join("\n");
+      }
+    })
+    sandbox.handle("ping", async (params, { signal }) => {
+      return "pong";
+    })
+    // Routes (like IP!)
+    // everything goes through iframe cuz nothing else is connected
+    sandbox.route("worker", "iframe");
+  </script>
+</head>
+
+<body></body>
+
+</html>

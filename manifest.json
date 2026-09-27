@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json.schemastore.org/chrome-manifest.json",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "yt-dlp-web@devofthedark.ca"
+    }
+  },
+  "manifest_version": 3,
+  "name": "yt-dlp-web",
+  "description": "yt-dlp, the most powerful web video downloader, now fully embedded in your browser.",
+  "version": "1.2.0",
+  "action": {
+    "default_title": "yt-dlp-web: click to download current page"
+  },
+  "permissions": [
+    "scripting",
+    "cookies",
+    "storage",
+    "downloads"
+  ],
+  "host_permissions": [
+    "*://*/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self';",
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh;"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "core/content/*",
+        "logo/*",
+        "core/iframe/*",
+        "core/sandbox/*",
+        "core/worker/*",
+        "/rpc.js",
+        "/libs/*"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "scripts": ["rpc.js", "background.js"]
+  },
+  "icons": {
+    "128":  "logo/logo-128.png"
+  },
+  "sandbox": {
+    "pages": ["core/sandbox/sandbox.html", "/rpc.js", "/core/sandbox/sandbox.js"]
+  }
+}
