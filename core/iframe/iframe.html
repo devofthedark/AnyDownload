@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>yt-dlp-web</title>
+    <style>
+        :root { color-scheme: light dark; }
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0;
+            height: 100%;
+        }
+        body {
+            display: flex;
+            flex-direction: column;
+            font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #1e1f22;
+            color: #e8e8ea;
+            overflow: hidden;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 12px;
+            background: #26272b;
+            border-bottom: 1px solid #333;
+            flex: none;
+        }
+        header h1 {
+            font-size: 13px;
+            margin: 0;
+            font-weight: 600;
+        }
+        #close {
+            background: none;
+            border: none;
+            color: #aaa;
+            font-size: 15px;
+            line-height: 1;
+            cursor: pointer;
+            padding: 3px 7px;
+            border-radius: 4px;
+        }
+        #close:hover { background: #3a3b3f; color: #fff; }
+        main {
+            flex: 1;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            overflow-y: auto;
+        }
+        #status { color: #aaa; }
+        #start {
+            background: #3b82f6;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        #start:disabled { opacity: .5; cursor: default; }
+        #formats {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+        #formats label {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #aaa;
+        }
+        #formats label span { width: 40px; flex: none; }
+        #formats select {
+            flex: 1;
+            min-width: 0;
+            background: #26272b;
+            color: #e8e8ea;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 5px 6px;
+            font-size: 12px;
+        }
+        #load-formats {
+            align-self: flex-start;
+            background: none;
+            border: none;
+            color: #6ea1f8;
+            padding: 0;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        #load-formats:disabled { opacity: .5; cursor: default; }
+        #progress-wrap { display: none; }
+        #progress-wrap.active { display: block; }
+        progress { width: 100%; }
+        #files {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        #files li {
+            background: #26272b;
+            border-radius: 6px;
+            padding: 6px 8px;
+            font-size: 12px;
+            word-break: break-all;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>yt-dlp-web</h1>
+        <button id="close" title="Close">✕</button>
+    </header>
+    <main>
+        <div id="status">Preparing…</div>
+        <div id="formats">
+            <label><span>Video</span>
+                <select id="video-format" disabled>
+                    <option value="default">Best (default)</option>
+                    <option value="none">None (audio only)</option>
+                </select>
+            </label>
+            <label><span>Audio</span>
+                <select id="audio-format" disabled>
+                    <option value="default">Best (default)</option>
+                    <option value="none">None (video only)</option>
+                </select>
+            </label>
+            <button id="load-formats" disabled>Load available formats</button>
+        </div>
+        <button id="start" disabled>Download</button>
+        <div id="progress-wrap">
+            <progress id="progress" max="1" value="0"></progress>
+        </div>
+        <ul id="files"></ul>
+    </main>
+    <script src="/rpc.js"></script>
+    <script src="iframe.js"></script>
+</body>
+</html>
