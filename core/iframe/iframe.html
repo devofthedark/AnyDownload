@@ -73,7 +73,13 @@
             gap: 8px;
             color: #aaa;
         }
-        #formats label span { width: 40px; flex: none; }
+        #formats label span { width: 48px; flex: none; }
+        #output-warning {
+            display: none;
+            color: #f0b43c;
+            font-size: 12px;
+        }
+        #output-warning.active { display: block; }
         #formats select {
             flex: 1;
             min-width: 0;
@@ -134,6 +140,12 @@
                     <option value="none">None (video only)</option>
                 </select>
             </label>
+            <label><span>Output</span>
+                <select id="output-format" disabled>
+                    <option value="default">Auto (default)</option>
+                </select>
+            </label>
+            <div id="output-warning">⚠ Changing the output format may require re-encoding the audio/video, which can be slow and lower the quality.</div>
             <button id="load-formats" disabled>Load available formats</button>
         </div>
         <button id="start" disabled>Download</button>

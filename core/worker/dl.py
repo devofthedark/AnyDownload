@@ -608,6 +608,7 @@ class MediabunnyVideoRemuxerPP(_MediabunnyPP):
         for candidate in self._formats:
             if candidate == current:
                 self.to_screen(f'Not remuxing, already {current}')
+                return [], info
             if self.bridge.supports(candidate):
                 wanted = candidate
                 break
@@ -753,13 +754,23 @@ def list_formats():
         })
     return json.dumps(formats)
 
-def download(fmt=None):
-    """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default"""
+def download(fmt=None, output=None):
+    """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
+    `output` is the container extension to end up with; empty keeps whatever yt-dlp picks"""
     # the worker deletes the store dir after each download, so get a fresh handle
     dir_store._dir = OPFSStore.open("_yt_dlp_OPFS_store")._dir
     opts = dict(ydl_opts)
     if fmt:
         opts["format"] = fmt
+    audio_codec = next((k for k, (ext, _) in AUDIO_TARGETS.items() if ext == output), None)
+    if output and not audio_codec:
+        opts["merge_output_format"] = output
     ydl = BrowserYDL(opts)
+    # added directly: yt-dlp's postprocessor registry still maps the FFmpeg keys to the FFmpeg classes
+    if audio_codec:
+        ydl.add_post_processor(MediabunnyExtractAudioPP(ydl, preferredcodec=audio_codec), when="post_process")
+    elif output:
+        # merges already land in `output`; this covers single-file downloads
+        ydl.add_post_processor(MediabunnyVideoRemuxerPP(ydl, preferedformat=output), when="post_process")
     info = ydl.download([run_sync(js.cur_url())])
     print(info)

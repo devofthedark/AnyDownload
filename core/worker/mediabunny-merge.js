@@ -53,6 +53,9 @@
                 if (global.MediabunnyAacEncoder && !(await M.canEncodeAudio('aac'))) {
                     global.MediabunnyAacEncoder.registerAacEncoder();
                 }
+                if (global.MediabunnyFlacEncoder && !(await M.canEncodeAudio('flac'))) {
+                    global.MediabunnyFlacEncoder.registerFlacEncoder();
+                }
             } catch (e) {
                 console.warn('[mb] encoder extension registration failed', e);
             }
