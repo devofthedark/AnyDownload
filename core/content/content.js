@@ -61,7 +61,7 @@ async function main() {
         top: 16px !important;
         right: 16px !important;
         width: 340px !important;
-        height: 480px !important;
+        height: 420px !important;
         z-index: 2147483647 !important;
     `;
     document.documentElement.appendChild(host);
@@ -85,6 +85,24 @@ async function main() {
         windowLink(iframe.contentWindow, ORIGIN),
     );
     content.route("worker", "iframe")
+
+    // the iframe reports how far its header has been dragged since dragStart
+    let dragOrigin = null;
+    content.handle("dragStart", async () => {
+        const rect = host.getBoundingClientRect();
+        dragOrigin = { left: rect.left, top: rect.top };
+    });
+    content.handle("drag", async ({ dx, dy }) => {
+        if (!dragOrigin) return;
+        const maxLeft = Math.max(0, window.innerWidth - host.offsetWidth);
+        const maxTop = Math.max(0, window.innerHeight - host.offsetHeight);
+        const left = Math.min(Math.max(0, dragOrigin.left + dx), maxLeft);
+        const top = Math.min(Math.max(0, dragOrigin.top + dy), maxTop);
+        host.style.setProperty("right", "auto", "important");
+        host.style.setProperty("left", `${left}px`, "important");
+        host.style.setProperty("top", `${top}px`, "important");
+    });
+
     content.handle("close", async () => {
         host.remove();
         // Tear down this session's links so their window/port listeners can't

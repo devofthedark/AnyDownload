@@ -207,6 +207,29 @@ closeBtn.addEventListener('click', () => {
     iframeNode.notify('content', 'close', {});
 });
 
+// Drag the panel by its header. The iframe can't move itself, so send the offset since
+// the drag started to the content script. Screen coordinates stay put while the iframe
+// moves under the cursor, unlike client coordinates.
+const header = document.querySelector('header');
+let dragStart = null;
+header.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 || e.target.closest('#close')) return;
+    dragStart = { x: e.screenX, y: e.screenY };
+    header.setPointerCapture(e.pointerId);
+    header.classList.add('dragging');
+    iframeNode.notify('content', 'dragStart', {});
+});
+header.addEventListener('pointermove', (e) => {
+    if (!dragStart) return;
+    iframeNode.notify('content', 'drag', { dx: e.screenX - dragStart.x, dy: e.screenY - dragStart.y });
+});
+const endDrag = () => {
+    dragStart = null;
+    header.classList.remove('dragging');
+};
+header.addEventListener('pointerup', endDrag);
+header.addEventListener('pointercancel', endDrag);
+
 startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     videoSel.disabled = true;

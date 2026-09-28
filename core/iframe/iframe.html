@@ -26,7 +26,11 @@
             background: #26272b;
             border-bottom: 1px solid #333;
             flex: none;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
         }
+        header.dragging { cursor: grabbing; }
         header h1 {
             font-size: 13px;
             margin: 0;
@@ -122,11 +126,14 @@
 </head>
 <body>
     <header>
-        <h1>yt-dlp-web</h1>
+        <h1>AnyDownload</h1>
         <button id="close" title="Close">✕</button>
     </header>
     <main>
         <div id="status">Preparing…</div>
+        <div id="progress-wrap">
+            <progress id="progress" max="1" value="0"></progress>
+        </div>
         <div id="formats">
             <label><span>Video</span>
                 <select id="video-format" disabled>
@@ -149,9 +156,6 @@
             <button id="load-formats" disabled>Load available formats</button>
         </div>
         <button id="start" disabled>Download</button>
-        <div id="progress-wrap">
-            <progress id="progress" max="1" value="0"></progress>
-        </div>
         <ul id="files"></ul>
     </main>
     <script src="/rpc.js"></script>
