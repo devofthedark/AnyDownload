@@ -1,0 +1,4 @@
+# Python wheels loaded into Pyodide. scripts/vendor.mjs downloads these from PyPI into libs/wheels/.
+# Only pin pure-Python (py3-none-any) packages here. yt-dlp-ejs isn't listed: its version is
+# taken from yt-dlp's own exact pin so the two can't drift apart.
+yt-dlp==2026.8.19

@@ -1,0 +1,20 @@
+{
+  "name": "yt-dlp-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "vendor": "node scripts/vendor.mjs",
+    "update": "node scripts/update.mjs",
+    "postinstall": "node scripts/vendor.mjs"
+  },
+  "dependencies": {
+    "@mediabunny/aac-encoder": "1.60.0",
+    "@mediabunny/flac-encoder": "1.60.0",
+    "@mediabunny/mp3-encoder": "1.60.0",
+    "mediabunny": "1.60.0",
+    "pyodide": "314.0.4"
+  },
+  "engines": {
+    "node": ">=20.11"
+  }
+}

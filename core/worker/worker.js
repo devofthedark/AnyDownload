@@ -1,9 +1,10 @@
 importScripts("/rpc.js")
 importScripts(
-    "/libs/mediabunny.js",
-    "/libs/mediabunny-aac-encoder.js",
-    "/libs/mediabunny-flac-encoder.js",
-    "/libs/mediabunny-mp3-encoder.js",
+    "/libs/vendor.js",
+    "/libs/mediabunny/mediabunny.js",
+    "/libs/mediabunny/mediabunny-aac-encoder.js",
+    "/libs/mediabunny/mediabunny-flac-encoder.js",
+    "/libs/mediabunny/mediabunny-mp3-encoder.js",
     "/core/worker/mediabunny-merge.js"
 )
 const worker = createNode("worker");
@@ -101,14 +102,10 @@ async function prepare() {
     importScripts(
         "/libs/pyodide/pyodide.js"
     )
-    YT_DLP_VER = [2026, 8, 19]
     pyodide = await loadPyodide({
         indexURL: "/libs/pyodide",
         stdLibURL: "/libs/pyodide/python_stdlib.zip",
-        packages: [
-            `/libs/pyodide/yt_dlp-${YT_DLP_VER.join(".")}-py3-none-any.whl`,
-            "/libs/pyodide/yt_dlp_ejs-0.8.0-py3-none-any.whl"
-        ]
+        packages: VENDOR.wheels // from requirements.txt, see scripts/vendor.mjs
     })
 
     await pyodide.FS.writeFile("/cookies.txt", cookies);
