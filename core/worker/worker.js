@@ -1,9 +1,9 @@
 importScripts("/rpc.js")
 importScripts(
-    "/libs/mediabunny.min.js",
-    "/libs/mediabunny-aac-encoder.min.js",
-    "/libs/mediabunny-flac-encoder.min.js",
-    "/libs/mediabunny-mp3-encoder.min.js",
+    "/libs/mediabunny.js",
+    "/libs/mediabunny-aac-encoder.js",
+    "/libs/mediabunny-flac-encoder.js",
+    "/libs/mediabunny-mp3-encoder.js",
     "/core/worker/mediabunny-merge.js"
 )
 const worker = createNode("worker");
