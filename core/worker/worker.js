@@ -1,5 +1,11 @@
 importScripts("/rpc.js")
-importScripts("/libs/mediabunny.js")
+importScripts(
+    "/libs/mediabunny.min.js",
+    "/libs/mediabunny-aac-encoder.min.js",
+    "/libs/mediabunny-flac-encoder.min.js",
+    "/libs/mediabunny-mp3-encoder.min.js",
+    "/core/worker/mediabunndy-merge.js"
+)
 importScripts("/core/worker/mediabunny-merge.js")
 const worker = createNode("worker");
 worker.connect("iframe", workerLink(self));
