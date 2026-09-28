@@ -10,6 +10,8 @@ const closeBtn = document.getElementById('close');
 const videoSel = document.getElementById('video-format');
 const audioSel = document.getElementById('audio-format');
 const loadFormatsBtn = document.getElementById('load-formats');
+const outputSel = document.getElementById('output-format');
+const outputWarning = document.getElementById('output-warning');
 const NS = 'ytx';
 iframeNode.handle("dl", async (params, {signal}) => {
     console.debug("dl file");
@@ -80,10 +82,30 @@ iframeNode.handle("dl_progress", async (params, {signal}) => {
     }
 });
 
-iframeNode.handle("ready", async () => {
+// containers the worker can write, split by whether the download has a video track
+let outputFormats = { video: [], audio: [] };
+
+function fillOutputs() {
+    const prev = outputSel.value;
+    const exts = videoSel.value === 'none' ? outputFormats.audio : outputFormats.video;
+    while (outputSel.options.length > 1) outputSel.remove(1);
+    for (const ext of exts) outputSel.add(new Option(`.${ext}`, ext));
+    // falls back to "default" if the previous choice isn't offered for this mode
+    outputSel.value = exts.includes(prev) ? prev : 'default';
+    outputWarning.classList.toggle('active', outputSel.value !== 'default');
+}
+outputSel.addEventListener('change', () => {
+    outputWarning.classList.toggle('active', outputSel.value !== 'default');
+});
+videoSel.addEventListener('change', fillOutputs);
+
+iframeNode.handle("ready", async ({ outputs } = {}) => {
+    if (outputs) outputFormats = outputs;
+    fillOutputs();
     startBtn.disabled = false;
     videoSel.disabled = false;
     audioSel.disabled = false;
+    outputSel.disabled = false;
     loadFormatsBtn.disabled = false;
     statusEl.textContent = 'Ready to download';
 });
@@ -189,16 +211,19 @@ startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     videoSel.disabled = true;
     audioSel.disabled = true;
+    outputSel.disabled = true;
     loadFormatsBtn.disabled = true;
     statusEl.textContent = 'Downloading…';
+    const output = outputSel.value === 'default' ? undefined : outputSel.value;
     try {
-        await iframeNode.call('worker', 'start', { format: formatSelector() }, { timeout: 0 });
+        await iframeNode.call('worker', 'start', { format: formatSelector(), output }, { timeout: 0 });
         statusEl.textContent = 'Finished';
     } catch (e) {
         statusEl.textContent = `Error: ${e.message}`;
         startBtn.disabled = false;
         videoSel.disabled = false;
         audioSel.disabled = false;
+        outputSel.disabled = false;
         loadFormatsBtn.disabled = formatsById.size > 0;
     }
 });

@@ -4,9 +4,8 @@ importScripts(
     "/libs/mediabunny-aac-encoder.min.js",
     "/libs/mediabunny-flac-encoder.min.js",
     "/libs/mediabunny-mp3-encoder.min.js",
-    "/core/worker/mediabunndy-merge.js"
+    "/core/worker/mediabunny-merge.js"
 )
-importScripts("/core/worker/mediabunny-merge.js")
 const worker = createNode("worker");
 worker.connect("iframe", workerLink(self));
 worker.route("sw", "iframe");
@@ -71,6 +70,29 @@ async function progress_hook(d) {
 
 
 let pyodide;
+const merger = createMerger('_yt_dlp_OPFS_store', {
+    onProgress: ({ jobId, progress }) => worker.notify('iframe', 'muxProgress', { jobId, progress }),
+});
+
+// Containers the UI can offer. Audio ones need their codec to be encodable, since dl.py
+// converts into it (mirrors AUDIO_TARGETS there: extension -> Mediabunny codec).
+const VIDEO_OUTPUTS = ['mp4', 'mkv', 'webm', 'mov'];
+const AUDIO_OUTPUTS = { m4a: 'aac', mp3: 'mp3', opus: 'opus', ogg: 'vorbis', flac: 'flac', wav: 'pcm-s16', aac: 'aac' };
+
+async function outputFormats() {
+    try {
+        const { containers, audioCodecs } = await merger.capabilities();
+        return {
+            video: VIDEO_OUTPUTS.filter((ext) => containers.includes(ext)),
+            audio: Object.keys(AUDIO_OUTPUTS).filter(
+                (ext) => containers.includes(ext) && audioCodecs.includes(AUDIO_OUTPUTS[ext])
+            ),
+        };
+    } catch (e) {
+        console.warn('could not probe output formats', e);
+        return { video: [], audio: [] };
+    }
+}
 
 async function prepare() {
     await worker.waitForLink("content");
@@ -90,9 +112,7 @@ async function prepare() {
     })
 
     await pyodide.FS.writeFile("/cookies.txt", cookies);
-    pyodide.registerJsModule('mb_bridge', createMerger('_yt_dlp_OPFS_store', {
-        onProgress: ({ jobId, progress }) => worker.notify('iframe', 'muxProgress', { jobId, progress }),
-    }));
+    pyodide.registerJsModule('mb_bridge', merger);
 }
 
 // dl.py registers handlers with yt-dlp, which can only happen once, so only run it once
@@ -113,7 +133,7 @@ async function listFormats() {
     return JSON.parse(await pyodide.runPythonAsync("list_formats()"));
 }
 
-async function runDownload(format) {
+async function runDownload(format, output) {
     await setupPython();
     const root = await navigator.storage.getDirectory();
     // Clear out the previous download's files here rather than right after handing them
@@ -121,7 +141,8 @@ async function runDownload(format) {
     // cut the saved file short. dl.py's download() recreates the directory.
     await root.removeEntry('_yt_dlp_OPFS_store', { recursive: true }).catch(() => {});
     pyodide.globals.set("_web_format", format || "");
-    await pyodide.runPythonAsync("download(_web_format)");
+    pyodide.globals.set("_web_output", output || "");
+    await pyodide.runPythonAsync("download(_web_format, _web_output)");
     const store = await root.getDirectoryHandle("_yt_dlp_OPFS_store");
     for await (const [name, handle] of store.entries()) {
         if (handle.kind !== 'file') continue;
@@ -134,12 +155,12 @@ worker.handle("formats", async () => {
     return await listFormats();
 });
 
-worker.handle("start", async ({ format } = {}) => {
-    await runDownload(format);
+worker.handle("start", async ({ format, output } = {}) => {
+    await runDownload(format, output);
 });
 
 async function main() {
     await prepare();
-    worker.notify('iframe', 'ready', {});
+    worker.notify('iframe', 'ready', { outputs: await outputFormats() });
 }
 main();
