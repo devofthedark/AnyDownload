@@ -38,6 +38,12 @@ function netscapeSerializer(cookies) {
 
 // when the extension icon is clicked
 chrome.action.onClicked.addListener(async (tab) => {
+    // nothing gets downloaded until the terms have been accepted
+    const { agree } = await chrome.storage.local.get({ agree: false });
+    if (!agree) {
+        chrome.tabs.create({ url: chrome.runtime.getURL("/pages/agreement/index.html") });
+        return;
+    }
     await chrome.scripting.executeScript({
         target: { tabId: tab.id },
         files: ["/rpc.js", "/core/content/content.js"],
