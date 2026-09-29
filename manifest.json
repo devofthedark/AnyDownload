@@ -2,15 +2,15 @@
   "$schema": "https://json.schemastore.org/chrome-manifest.json",
   "browser_specific_settings": {
     "gecko": {
-      "id": "yt-dlp-web@devofthedark.ca"
+      "id": "AnyDownload@devofthedark.ca"
     }
   },
   "manifest_version": 3,
-  "name": "yt-dlp-web",
+  "name": "AnyDownload",
   "description": "yt-dlp, the most powerful web video downloader, now fully embedded in your browser.",
   "version": "1.2.0",
   "action": {
-    "default_title": "yt-dlp-web: click to download current page"
+    "default_title": "AnyDownload: click to download current page"
   },
   "permissions": [
     "scripting",
