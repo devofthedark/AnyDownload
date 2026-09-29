@@ -31,10 +31,14 @@ iframeNode.handle("dl", async (params, {signal}) => {
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
 });
 
+iframeNode.handle("status", async ({ text }) => {
+    statusEl.textContent = text;
+});
+
 iframeNode.handle("muxProgress", async (params, {signal}) => {
     progressWrap.classList.add('active');
     progressEl.value = params.progress;
-    statusEl.textContent = `Merging… ${Math.round(params.progress * 100)}%`;
+    statusEl.textContent = `${params.label ?? 'Merging'}… ${Math.round(params.progress * 100)}%`;
 });
 
 function formatBytes(n) {
@@ -53,9 +57,11 @@ function formatEta(s) {
 }
 
 iframeNode.handle("dl_progress", async (params, {signal}) => {
-    const { status, filename, downloaded_bytes, total_bytes, total_bytes_estimate, speed, eta } = params;
+    const { status, filename, stream, downloaded_bytes, total_bytes, total_bytes_estimate, speed, eta,
+        fragment_index, fragment_count } = params;
     const total = total_bytes ?? total_bytes_estimate;
-    const name = filename ? filename.split('/').pop() : '';
+    // "video stream (1080p)" / "audio stream" when they're fetched separately, else the file name
+    const name = stream ?? (filename ? filename.split('/').pop() : '');
 
     if (status === 'downloading') {
         progressWrap.classList.add('active');
@@ -68,6 +74,7 @@ iframeNode.handle("dl_progress", async (params, {signal}) => {
         const parts = [];
         if (total) parts.push(`${Math.round((downloaded_bytes / total) * 100)}%`);
         else if (downloaded_bytes != null) parts.push(formatBytes(downloaded_bytes));
+        if (fragment_count) parts.push(`fragment ${fragment_index ?? 0}/${fragment_count}`);
         const speedStr = formatBytes(speed);
         if (speedStr) parts.push(`${speedStr}/s`);
         const etaStr = formatEta(eta);
@@ -236,11 +243,11 @@ startBtn.addEventListener('click', async () => {
     audioSel.disabled = true;
     outputSel.disabled = true;
     loadFormatsBtn.disabled = true;
-    statusEl.textContent = 'Downloading…';
+    statusEl.textContent = 'Starting download…';
     const output = outputSel.value === 'default' ? undefined : outputSel.value;
     try {
-        await iframeNode.call('worker', 'start', { format: formatSelector(), output }, { timeout: 0 });
-        statusEl.textContent = 'Finished';
+        const saved = await iframeNode.call('worker', 'start', { format: formatSelector(), output }, { timeout: 0 });
+        statusEl.textContent = `Finished, saved ${saved.length} file${saved.length === 1 ? '' : 's'}`;
     } catch (e) {
         statusEl.textContent = `Error: ${e.message}`;
         startBtn.disabled = false;
