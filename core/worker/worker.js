@@ -20,11 +20,18 @@ self.addEventListener('message', function bridgeHandshake(e) {
   const port = e.ports[0];
   worker.connect('content', messagePortLink(port));
 });
+// shows `text` in the panel's status line; python calls this too
+function set_status(text) {
+    worker.notify("iframe", "status", { text });
+}
+
 // thin wrappers around RPC calls to give to python
 async function jsc(code) {
+    set_status("Solving YouTube's JavaScript challenge in the sandbox…");
     return await worker.call("sandbox", "jsc", { code: code });
 }
 async function mint_potoken(content_binding, mint_cold_start_token, mint_error_token) {
+    set_status("Getting a PO token from the page's YouTube player…");
     const c_bind = [];
     console.log(content_binding[0]?.constructor?.name, content_binding[1]?.constructor?.name, mint_cold_start_token, mint_error_token)
     c_bind.push(content_binding[0] === undefined ? null : content_binding[0])
@@ -57,6 +64,7 @@ async function progress_hook(d) {
     worker.notify("iframe", "dl_progress", {
         status: d.get("status"),
         filename: d.get("filename"),
+        stream: d.get("stream"),
         downloaded_bytes: d.get("downloaded_bytes"),
         total_bytes: d.get("total_bytes"),
         total_bytes_estimate: d.get("total_bytes_estimate"),
@@ -71,8 +79,17 @@ async function progress_hook(d) {
 
 
 let pyodide;
+
+// e.g. "Merging video and audio into .mp4, re-encoding audio from opus to aac"
+function muxLabel(label, reencoding) {
+    if (!reencoding.length) return label;
+    const tracks = reencoding.map(({ type, from, to }) => to ? `${type} from ${from} to ${to}` : `${type} from ${from}`);
+    return `${label}, re-encoding ${tracks.join(' and ')}`;
+}
+
 const merger = createMerger('_yt_dlp_OPFS_store', {
-    onProgress: ({ jobId, progress }) => worker.notify('iframe', 'muxProgress', { jobId, progress }),
+    onProgress: ({ jobId, label, reencoding, progress }) =>
+        worker.notify('iframe', 'muxProgress', { jobId, label: muxLabel(label || 'Merging', reencoding), progress }),
 });
 
 // Containers the UI can offer. Audio ones need their codec to be encodable, since dl.py
@@ -96,9 +113,12 @@ async function outputFormats() {
 }
 
 async function prepare() {
+    set_status("Connecting to the page…");
     await worker.waitForLink("content");
+    set_status("Reading this site's cookies…");
     const cookies = await worker.call("content", "cookies", {});
     console.log(cookies);
+    set_status("Starting Python (Pyodide) and loading yt-dlp…");
     importScripts(
         "/libs/pyodide/pyodide.js"
     )
@@ -118,6 +138,7 @@ function setupPython() {
     if (!setupPromise) {
         setupPromise = (async () => {
             console.log("start python (good luck...)")
+            set_status("Initializing yt-dlp…");
             await pyodide.runPythonAsync(await (await fetch("/core/worker/dl.py")).text())
         })();
         setupPromise.catch(() => { setupPromise = undefined; });
@@ -127,6 +148,7 @@ function setupPython() {
 
 async function listFormats() {
     await setupPython();
+    set_status("Extracting video info from this page…");
     return JSON.parse(await pyodide.runPythonAsync("list_formats()"));
 }
 
@@ -139,13 +161,18 @@ async function runDownload(format, output) {
     await root.removeEntry('_yt_dlp_OPFS_store', { recursive: true }).catch(() => {});
     pyodide.globals.set("_web_format", format || "");
     pyodide.globals.set("_web_output", output || "");
+    set_status("Extracting video info from this page…");
     await pyodide.runPythonAsync("download(_web_format, _web_output)");
     const store = await root.getDirectoryHandle("_yt_dlp_OPFS_store");
+    const saved = [];
     for await (const [name, handle] of store.entries()) {
         if (handle.kind !== 'file') continue;
+        set_status(`Saving ${name}…`);
         const file = await handle.getFile();
         await worker.call('iframe', 'dl', {file: file, name:name});
+        saved.push(name);
     }
+    return saved;
 }
 
 worker.handle("formats", async () => {
@@ -153,11 +180,12 @@ worker.handle("formats", async () => {
 });
 
 worker.handle("start", async ({ format, output } = {}) => {
-    await runDownload(format, output);
+    return await runDownload(format, output);
 });
 
 async function main() {
     await prepare();
+    set_status("Checking which output formats this browser can encode…");
     worker.notify('iframe', 'ready', { outputs: await outputFormats() });
 }
 main();

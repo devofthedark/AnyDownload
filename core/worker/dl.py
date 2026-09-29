@@ -1,4 +1,4 @@
-import functools, io, os, sys
+import functools, io, os, re, sys
 from types import NoneType
 import yt_dlp, js
 from pyodide.ffi import to_js, run_sync
@@ -485,7 +485,7 @@ class _MediabunnyPP(PostProcessor):
     def available(self):
         return True
 
-    def _mux(self, info, sources, out_path, container, tags=None):
+    def _mux(self, info, sources, out_path, container, tags=None, label=None):
         store, bridge = self.store, self.bridge
 
         if not bridge.supports(container):
@@ -504,10 +504,13 @@ class _MediabunnyPP(PostProcessor):
             'sources': [_opts(**s) for s in sources],
             'outputName': store._key(out_path),
             'container': container,
-            'jobId': store._key(out_path)
+            'jobId': store._key(out_path),
+            'label': label
         }
         if tags:
             payload['tags'] = _opts(**tags)
+        if label:
+            js.set_status(f'{label}…')
 
         try:
             run_sync(bridge.mux(_opts(**payload)))
@@ -539,7 +542,8 @@ class MediabunnyMergerPP(_MediabunnyPP):
             })
         target = info['filepath']
         self.to_screen(f'merging formats into "{target}"')
-        self._mux(info, sources, target, info['ext'], self._maybe_tags(info))
+        self._mux(info, sources, target, info['ext'], self._maybe_tags(info),
+                  label=f'Merging video and audio into .{info["ext"]}')
         return to_merge, info
 
 class MediabunnyExtractAudioPP(_MediabunnyPP):
@@ -588,7 +592,8 @@ class MediabunnyExtractAudioPP(_MediabunnyPP):
                 source['audioBitrate'] = bitrate
 
         self.to_screen(f'Extracting audio to "{target}"')
-        self._mux(info, [source], target, ext, self._maybe_tags(info))
+        verb = 'Converting' if codec else 'Extracting'
+        self._mux(info, [source], target, ext, self._maybe_tags(info), label=f'{verb} audio to .{ext}')
 
         info['filepath'] = target
         info['ext'] = ext
@@ -619,7 +624,7 @@ class MediabunnyVideoRemuxerPP(_MediabunnyPP):
         source = {'name': self.store._key(path), 'video': True, 'audio': True}
 
         self.to_screen(f'Remuxing video into {wanted}')
-        self._mux(info, [source], target, wanted, self._maybe_tags(info))
+        self._mux(info, [source], target, wanted, self._maybe_tags(info), label=f'Converting .{current} to .{wanted}')
 
         info['filepath'] = target
         info['ext'] = wanted
@@ -650,7 +655,7 @@ class MediabunnyMetadataPP(_MediabunnyPP):
  
         self.to_screen(f'Adding metadata to "{path}"')
         source = {'name': name, 'video': True, 'audio': True}
-        self._mux(info, [source], temp, info['ext'], _tags_for(info))
+        self._mux(info, [source], temp, info['ext'], _tags_for(info), label='Writing metadata')
  
         self.store.remove(name)
         self.store.rename(temp, name)
@@ -665,7 +670,7 @@ class MediabunnyRemuxFixupPP(_MediabunnyPP):
  
         self.to_screen(f'Fixing container of "{path}"')
         source = {'name': name, 'video': True, 'audio': True}
-        self._mux(info, [source], temp, info['ext'], self._maybe_tags(info))
+        self._mux(info, [source], temp, info['ext'], self._maybe_tags(info), label=f'Fixing up the .{info["ext"]} container')
  
         self.store.remove(name)
         self.store.rename(temp, name)
@@ -710,13 +715,42 @@ replacements = {
 for name, cls in replacements.items():
     _rebind(name, cls)
 
+_SCREEN_LINE = re.compile(r'\[(?P<tag>[^\]]+)\] (?P<msg>.+)', re.DOTALL)
+
+def _describe(message):
+    """Tidy a yt-dlp console line (e.g. "[youtube] dQw4w9WgXcQ: Downloading webpage") for the status line"""
+    message = message.strip()
+    m = _SCREEN_LINE.fullmatch(message)
+    if not m:
+        return message
+    # our post-processors print as e.g. "[MediabunnyMerger]"; show them like yt-dlp's own
+    tag, msg = m['tag'].removeprefix('Mediabunny'), m['msg']
+    if tag == 'download' and msg.startswith('Destination: '):
+        return f'Starting download of {os.path.basename(msg.removeprefix("Destination: "))}'
+    # extractor lines are prefixed with the video id, which isn't useful to show
+    msg = re.sub(r'^[^\s:]+: ', '', msg)
+    return f'{tag}: {msg}'
+
 class BrowserYDL(yt_dlp.YoutubeDL):
     @functools.cached_property
     def _request_director(self):
         return self.build_request_director([FetchRH])
 
+    def to_screen(self, message, *args, **kwargs):
+        super().to_screen(message, *args, **kwargs)
+        js.set_status(_describe(message))
+
+def _stream_label(info):
+    """Which part of the download this is, when yt-dlp is fetching video and audio separately"""
+    video, audio = _has(info, 'vcodec'), _has(info, 'acodec')
+    if video and not audio:
+        return f'video stream ({info["height"]}p)' if info.get('height') else 'video stream'
+    if audio and not video:
+        return 'audio stream'
+    return None
+
 def progress_hook(d):
-    run_sync(js.progress_hook(d))
+    run_sync(js.progress_hook(d | {'stream': _stream_label(d.get('info_dict') or {})}))
 
 
 

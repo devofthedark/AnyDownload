@@ -157,6 +157,12 @@
 
                 var conversions = [];
                 var progress = new Array(sources.length).fill(0);
+                var reencoding = [];
+                function report(p) {
+                    if (onProgress) {
+                        onProgress({ jobId: opts.jobId, label: opts.label, reencoding: reencoding, progress: p });
+                    }
+                }
 
                 for (var i = 0; i < sources.length; i++) {
                     var src = sources[i];
@@ -186,12 +192,27 @@
                         );
                     }
 
+                    // Mediabunny copies a track as-is unless its codec doesn't fit the container
+                    // or we ask for a different codec/bitrate; mirror that check so the UI can tell
+                    // a quick remux apart from a slow re-encode.
+                    for (var t = 0; t < conversion.utilizedTracks.length; t++) {
+                        var track = conversion.utilizedTracks[t];
+                        var trackOpts = track.type === 'video' ? videoOpts : audioOpts;
+                        var supported = track.type === 'video'
+                            ? format.getSupportedVideoCodecs()
+                            : format.getSupportedAudioCodecs();
+                        var codec = await track.getCodec();
+                        if (!supported.includes(codec) || (trackOpts.codec && trackOpts.codec !== codec) || trackOpts.bitrate) {
+                            reencoding.push({ type: track.type, from: codec, to: trackOpts.codec || null });
+                        }
+                    }
+
                     if (onProgress) {
                         (function (index) {
                             conversion.onProgress = function (p) {
                                 progress[index] = p;
                                 var total = progress.reduce(function (a, b) { return a + b; }, 0);
-                                onProgress({ jobId: opts.jobId, progress: total / progress.length });
+                                report(total / progress.length);
                             };
                         })(i);
                     }
@@ -199,6 +220,7 @@
                     conversions.push(conversion);
                 }
 
+                report(0);
                 await output.start();
 
                 for (var until = 1; ; until += 1) {
