@@ -12,6 +12,7 @@ const audioSel = document.getElementById('audio-format');
 const loadFormatsBtn = document.getElementById('load-formats');
 const outputSel = document.getElementById('output-format');
 const outputWarning = document.getElementById('output-warning');
+const memoryNote = document.getElementById('memory-note');
 const NS = 'ytx';
 iframeNode.handle("dl", async (params, {signal}) => {
     console.debug("dl file");
@@ -106,9 +107,11 @@ outputSel.addEventListener('change', () => {
 });
 videoSel.addEventListener('change', fillOutputs);
 
-iframeNode.handle("ready", async ({ outputs } = {}) => {
+iframeNode.handle("ready", async ({ outputs, inMemory } = {}) => {
     if (outputs) outputFormats = outputs;
     fillOutputs();
+    // the worker has no OPFS here (e.g. a Firefox private window), see memory-fs.js
+    memoryNote.classList.toggle('active', !!inMemory);
     startBtn.disabled = false;
     videoSel.disabled = false;
     audioSel.disabled = false;

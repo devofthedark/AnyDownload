@@ -187,7 +187,8 @@ class NativeExtractorPTP(PoTokenProvider):
         tok = run_sync(js.mint_potoken([bind[0], None if bind[1] is None else str(bind[1])], False, False)) # jank
         return PoTokenResponse(po_token=tok)
 
-# Patch file writes over OPFS to avoid wasm 4GB memory limit
+# Patch file writes over OPFS to avoid wasm 4GB memory limit. Firefox's private windows have no OPFS,
+# so there the worker hands us an in-memory stand-in with the same API instead (see memory-fs.js).
 
 # yt-dlp handles file errors with `except OSError` (and retries some errnos), but OPFS failures
 # arrive as JsException, which would skip all of that. Name of the DOMException -> OSError to raise.
@@ -323,7 +324,7 @@ class OPFSStore:
     @classmethod
     def open(cls, subdir=None):
         js.console.debug(f'[OPFS translation layer] OPFSStore.open({subdir})')
-        root = run_sync(js.navigator.storage.getDirectory())
+        root = run_sync(js.storage_root())
         if subdir:
             root = run_sync(root.getDirectoryHandle(subdir, _opts(create=True)))
         return cls(root)

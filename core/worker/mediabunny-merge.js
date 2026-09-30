@@ -35,10 +35,12 @@
     function createMerger(dirName, options) {
         dirName = dirName || 'downloads';
         var onProgress = (options || {}).onProgress;
+        // where dirName lives: OPFS's root, unless the caller keeps its files elsewhere (see memory-fs.js)
+        var getRoot = (options || {}).getRoot || function () { return navigator.storage.getDirectory(); };
         var extrasRegistered = false;
 
         async function dir() {
-            var root = await navigator.storage.getDirectory();
+            var root = await getRoot();
             return root.getDirectoryHandle(dirName, { create: true });
         }
 
@@ -94,6 +96,16 @@
                 }
             }
             return out;
+        }
+
+        // After a failed mux, let go of everything it holds. Above all the output file: while its
+        // writable is open the file stays locked, so the worker can't clear the directory and this
+        // job's leftovers would get saved along with the next download.
+        async function abandon(output, conversions, writable) {
+            await Promise.all(conversions.map(function (c) { return c.cancel().catch(function () {}); }));
+            if (output) await output.cancel().catch(function () {});
+            // only does anything if the output never started, as then nothing has taken the stream
+            await writable.abort().catch(function () {});
         }
 
         return {
@@ -153,93 +165,98 @@
                 var handle = await dir();
                 var outHandle = await handle.getFileHandle(outputName, { create: true });
                 var writable = await outHandle.createWritable();
-
-                var output = new M.Output({
-                    format: format,
-                    target: new M.StreamTarget(writable, { chunked: true }),
-                });
-
-                if (opts.tags) {
-                    output.setMetadataTags(await buildTags(handle, opts.tags));
-                }
-
+                var output = null;
                 var conversions = [];
-                var progress = new Array(sources.length).fill(0);
-                var reencoding = [];
-                function report(p) {
-                    if (onProgress) {
-                        onProgress({ jobId: opts.jobId, label: opts.label, reencoding: reencoding, progress: p });
-                    }
-                }
 
-                for (var i = 0; i < sources.length; i++) {
-                    var src = sources[i];
-                    var audioOpts = { discard: !src.audio };
-                    if (src.audio && src.audioCodec) audioOpts.codec = src.audioCodec;
-                    if (src.audio && src.audioBitrate) audioOpts.bitrate = src.audioBitrate;
-
-                    var videoOpts = { discard: !src.video };
-                    if (src.video && src.videoCodec) videoOpts.codec = src.videoCodec;
-
-                    var conversion = await M.Conversion.init({
-                        input: await openInput(handle, src.name),
-                        output: output,
-                        composable: true, // this conversion does not own the Output
-                        video: videoOpts,
-                        audio: audioOpts,
+                try {
+                    output = new M.Output({
+                        format: format,
+                        target: new M.StreamTarget(writable, { chunked: true }),
                     });
 
-                    if (!conversion.isValid) {
-                        var why = conversion.discardedTracks
-                            .map(function (t) {
-                                return ((t.track && t.track.type) || '?') + ': ' + t.reason;
-                            })
-                            .join('; ');
-                        throw new Error(
-                            'cannot mux "' + src.name + '" into .' + opts.container + ' — ' + why
-                        );
+                    if (opts.tags) {
+                        output.setMetadataTags(await buildTags(handle, opts.tags));
                     }
 
-                    // Mediabunny copies a track as-is unless its codec doesn't fit the container
-                    // or we ask for a different codec/bitrate; mirror that check so the UI can tell
-                    // a quick remux apart from a slow re-encode.
-                    for (var t = 0; t < conversion.utilizedTracks.length; t++) {
-                        var track = conversion.utilizedTracks[t];
-                        var trackOpts = track.type === 'video' ? videoOpts : audioOpts;
-                        var supported = track.type === 'video'
-                            ? format.getSupportedVideoCodecs()
-                            : format.getSupportedAudioCodecs();
-                        var codec = await track.getCodec();
-                        if (!supported.includes(codec) || (trackOpts.codec && trackOpts.codec !== codec) || trackOpts.bitrate) {
-                            reencoding.push({ type: track.type, from: codec, to: trackOpts.codec || null });
+                    var progress = new Array(sources.length).fill(0);
+                    var reencoding = [];
+                    function report(p) {
+                        if (onProgress) {
+                            onProgress({ jobId: opts.jobId, label: opts.label, reencoding: reencoding, progress: p });
                         }
                     }
 
-                    if (onProgress) {
-                        (function (index) {
-                            conversion.onProgress = function (p) {
-                                progress[index] = p;
-                                var total = progress.reduce(function (a, b) { return a + b; }, 0);
-                                report(total / progress.length);
-                            };
-                        })(i);
+                    for (var i = 0; i < sources.length; i++) {
+                        var src = sources[i];
+                        var audioOpts = { discard: !src.audio };
+                        if (src.audio && src.audioCodec) audioOpts.codec = src.audioCodec;
+                        if (src.audio && src.audioBitrate) audioOpts.bitrate = src.audioBitrate;
+
+                        var videoOpts = { discard: !src.video };
+                        if (src.video && src.videoCodec) videoOpts.codec = src.videoCodec;
+
+                        var conversion = await M.Conversion.init({
+                            input: await openInput(handle, src.name),
+                            output: output,
+                            composable: true, // this conversion does not own the Output
+                            video: videoOpts,
+                            audio: audioOpts,
+                        });
+                        conversions.push(conversion);
+
+                        if (!conversion.isValid) {
+                            var why = conversion.discardedTracks
+                                .map(function (t) {
+                                    return ((t.track && t.track.type) || '?') + ': ' + t.reason;
+                                })
+                                .join('; ');
+                            throw new Error(
+                                'cannot mux "' + src.name + '" into .' + opts.container + ' — ' + why
+                            );
+                        }
+
+                        // Mediabunny copies a track as-is unless its codec doesn't fit the container
+                        // or we ask for a different codec/bitrate; mirror that check so the UI can tell
+                        // a quick remux apart from a slow re-encode.
+                        for (var t = 0; t < conversion.utilizedTracks.length; t++) {
+                            var track = conversion.utilizedTracks[t];
+                            var trackOpts = track.type === 'video' ? videoOpts : audioOpts;
+                            var supported = track.type === 'video'
+                                ? format.getSupportedVideoCodecs()
+                                : format.getSupportedAudioCodecs();
+                            var codec = await track.getCodec();
+                            if (!supported.includes(codec) || (trackOpts.codec && trackOpts.codec !== codec) || trackOpts.bitrate) {
+                                reencoding.push({ type: track.type, from: codec, to: trackOpts.codec || null });
+                            }
+                        }
+
+                        if (onProgress) {
+                            (function (index) {
+                                conversion.onProgress = function (p) {
+                                    progress[index] = p;
+                                    var total = progress.reduce(function (a, b) { return a + b; }, 0);
+                                    report(total / progress.length);
+                                };
+                            })(i);
+                        }
                     }
 
-                    conversions.push(conversion);
+                    report(0);
+                    await output.start();
+
+                    for (var until = 1; ; until += 1) {
+                        await Promise.all(
+                            conversions.map(function (c) { return c.execute({ until: until }); })
+                        );
+                        var done = conversions.every(function (c) { return c.state === 'done'; });
+                        if (done) break;
+                    }
+
+                    await output.finalize();
+                } catch (err) {
+                    await abandon(output, conversions, writable);
+                    throw err;
                 }
-
-                report(0);
-                await output.start();
-
-                for (var until = 1; ; until += 1) {
-                    await Promise.all(
-                        conversions.map(function (c) { return c.execute({ until: until }); })
-                    );
-                    var done = conversions.every(function (c) { return c.state === 'done'; });
-                    if (done) break;
-                }
-
-                await output.finalize();
 
                 var written = await (await handle.getFileHandle(outputName)).getFile();
                 return written.size;
