@@ -58,21 +58,21 @@ class FetchRH(RequestHandler):
     _SUPPORTED_ENCODINGS = ('gzip', 'br')
 
     def _send(self, request: Request):
-        """We use the browser's cookie jar instead of yt-dlp's. I might regret this"""
+        """The browser sends the cookies, not yt-dlp: fetch can't set a Cookie header. It does so only
+        for requests to the page's origin, see python_fetch in worker.js. yt-dlp's cookie jar holds
+        the same cookies (the cookiefile option) so extractors can see them, but it isn't sent."""
         new_headers = {}
         proxy = False
-        w_credentials = False
+        # see the visionos notes below
+        anonymous = request.headers.get("X-YouTube-Client-Name") == VISIONOS_CLIENT_NAME
         NO_SET_HEADERS = ["accept-encoding", "cookie", "cookie2", "origin", "referer", "sec-fetch-mode", "user-agent"]
-        COOKIE_INDICATOR_HEADERS = ["cookie", "cookie2"]
         # fetch can't set Origin or Referer, so requests that need them are sent from the page instead,
         # which gives them the page's. Some CDNs (e.g. bilibili's) refuse requests without a Referer.
         PROXY_INDICATOR_HEADERS = ["origin", "referer"]
         referrer = None
         for k, v in request.headers.items():
-            if k.lower() not in NO_SET_HEADERS:
+            if k.lower() not in NO_SET_HEADERS and not (anonymous and k.lower() in YT_ACCOUNT_HEADERS):
                 new_headers[k] = v
-            if k.lower() in COOKIE_INDICATOR_HEADERS:
-                w_credentials = True
             if k.lower() in PROXY_INDICATOR_HEADERS:
                 proxy = True
             if k.lower() == "referer":
@@ -89,7 +89,8 @@ class FetchRH(RequestHandler):
             "url": request.url,
             "headers": new_headers,
             "body": js_compat_body,
-            "credentials": "include" if w_credentials else "omit"
+            # never send the browser's cookies, even to the page's origin
+            "anonymous": anonymous,
         }
         if referrer:
             # only honoured when it's on the page's origin, otherwise the page's URL is used
@@ -108,7 +109,8 @@ class FetchRH(RequestHandler):
         res = Response(
             # no body for e.g. HEAD requests
             fp = FetchStream(response.stream.getReader()) if response.stream else io.BytesIO(),
-            url = request.url,
+            # where any redirects ended up, like yt-dlp's own handlers report
+            url = response.url or request.url,
             headers = r_headers,
             status = response.status
         )
@@ -116,6 +118,18 @@ class FetchRH(RequestHandler):
         if not 200 <= res.status < 300:
             raise HTTPError(res)
         return res
+
+# YouTube: always use the visionos client. Signed in, yt-dlp would otherwise pick clients that
+# only get 360p here, and it skips visionos since that client doesn't support cookies. So visionos
+# is kept, and FetchRH sends its requests signed out instead: no cookies and no account headers,
+# just as yt-dlp does when it has no cookies.
+
+from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
+
+VISIONOS_CLIENT_NAME = str(INNERTUBE_CLIENTS['visionos']['INNERTUBE_CONTEXT_CLIENT_NAME'])
+INNERTUBE_CLIENTS['visionos']['SUPPORTS_COOKIES'] = True
+# what YoutubeBaseInfoExtractor._generate_cookie_auth_headers adds when signed in
+YT_ACCOUNT_HEADERS = ["authorization", "x-origin", "x-goog-authuser", "x-goog-pageid", "x-youtube-bootstrap-logged-in"]
 
 # JS Challenge
 
@@ -359,7 +373,8 @@ class OPFSStore:
 OPFS_PREFIX = "/OPFS"
 import yt_dlp.utils as ytu
 orig = ytu.sanitize_open
-dir_store = OPFSStore.open("_yt_dlp_OPFS_store")
+# STORE_DIR is this panel's own OPFS directory, set by worker.js before it runs this file
+dir_store = OPFSStore.open(STORE_DIR)
 
 def sanitize_open(filename, open_mode):
     js.console.debug(f'[OPFS translation layer] sanitize_open("{filename}", "{open_mode}")')
@@ -780,6 +795,8 @@ ydl_opts = {
     "external_downloader": {'dash': 'native', 'm3u8': 'native'},
     "postprocessors": [],
     "_no_ytdl_file": True,
+    "cookiefile": "/cookies.txt", # the page's cookies, written by the worker before each call below
+    "extractor_args": {"youtube": {"player_client": ["visionos"]}}, # see the visionos notes above
     "progress_hooks": [progress_hook]
 }
 
@@ -810,7 +827,7 @@ def download(fmt=None, output=None):
     """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
     `output` is the container extension to end up with; empty keeps whatever yt-dlp picks"""
     # the worker deletes the store dir after each download, so get a fresh handle
-    dir_store._dir = OPFSStore.open("_yt_dlp_OPFS_store")._dir
+    dir_store._dir = OPFSStore.open(STORE_DIR)._dir
     opts = dict(ydl_opts)
     if fmt:
         opts["format"] = fmt

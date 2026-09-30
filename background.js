@@ -7,7 +7,6 @@ if (typeof importScripts === "function") {
 } else {
     console.warn("importScripts not available in this context");
 }
-const sw = createNode('sw');
 
 // From https://github.com/kairi003/Get-cookies.txt-LOCALLY/blob/master/src/modules/cookie_format.mjs
 function jsonToNetscapeMapper(cookies) {
@@ -59,21 +58,31 @@ chrome.action.onClicked.addListener(async (tab) => {
 });
 
 
-async function cookies(url) {
-    const cookies = await chrome.cookies.getAll({ url: url });
-    return netscapeSerializer(cookies);
+// Incognito tabs and Firefox containers have their own cookie stores, and without a storeId
+// getAll() reads the default one, i.e. the wrong account's cookies.
+async function cookieStoreId(tab) {
+    if (tab.cookieStoreId) return tab.cookieStoreId; // Firefox
+    const stores = await chrome.cookies.getAllCookieStores();
+    return stores.find((store) => store.tabIds.includes(tab.id))?.id;
 }
 
-sw.handle("cookies", async (params, { signal }) => {
-    return await cookies(params.url);
-});
+async function cookies(url, tab) {
+    const query = { url: url };
+    const storeId = tab && await cookieStoreId(tab);
+    if (storeId) query.storeId = storeId;
+    return netscapeSerializer(await chrome.cookies.getAll(query));
+}
 
-
-sw.route("iframe", "content");
-sw.route("worker", "content");
-
+// Every tab's content script is a node called "content", so a single shared node would send each
+// reply down whichever tab connected last. Instead each connection gets its own node, which also
+// knows the tab it serves.
 chrome.runtime.onConnect.addListener((port) => {
-    sw.connect("content", portLink(port));
+    const tab = port.sender?.tab;
+    createNode("sw")
+        .handle("cookies", async (params, { signal }) => {
+            return await cookies(params.url, tab);
+        })
+        .connect("content", portLink(port));
 })
 
 
