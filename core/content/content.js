@@ -11,7 +11,6 @@ const port = chrome.runtime.connect();
 content.connect("sw", portLink(port));
 content.connect("potoken", windowLink(window, location.origin))
 content.handle("proxyfetch", async (request, { transfer }) => {
-    console.log("HERE!")
     let { method, url, body, headers, credentials } = request;
     const response = await fetch(url, {
         method: method,
@@ -23,7 +22,6 @@ content.handle("proxyfetch", async (request, { transfer }) => {
     await content.waitForDirect("worker");
     const stream = response.body;
     transfer.push(stream)
-    console.log(JSON.stringify(response.headers), typeof(response.headers), response.status)
     const entries = []
     response.headers.forEach((value, key) => entries.push([key, value]));
     return { stream, status: response.status, headers: entries }
@@ -42,12 +40,9 @@ window.addEventListener('message', function bridgeHandshake(e) {
     content.connect('worker', messagePortLink(port));
     content.route("worker", "worker")
 });
-console.log(ORIGIN)
 
 async function main() {
     const cookies = await content.call("sw", "cookies", { url: location.href });
-
-    console.log(cookies);
 
     // cached cookies, we dont want to wait for SW to start up
     content.handle("cookies", async (params, { signal }) => {
@@ -114,8 +109,6 @@ async function main() {
         content.disconnect("sw");
         window.__webvideoDlActive = false;
     });
-    console.error("POTOKEN TEST HERE")
-    console.log(await window.top["havuokmhhs-0"]?.bevasrs?.wpc().then((client) => client.mws({c:"beef", mc:false, me:false})))
 }
 main();
 })();

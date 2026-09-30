@@ -15,7 +15,6 @@ worker.route("potoken", "iframe")
 ORIGIN = self.origin
 const NS = 'ytx';
 self.addEventListener('message', function bridgeHandshake(e) {
-    console.log("CONNECT worker")
   if (e.data?.[NS] !== 'bridge') return;
   const port = e.ports[0];
   worker.connect('content', messagePortLink(port));
@@ -33,10 +32,9 @@ async function jsc(code) {
 async function mint_potoken(content_binding, mint_cold_start_token, mint_error_token) {
     set_status("Getting a PO token from the page's YouTube player…");
     const c_bind = [];
-    console.log(content_binding[0]?.constructor?.name, content_binding[1]?.constructor?.name, mint_cold_start_token, mint_error_token)
     c_bind.push(content_binding[0] === undefined ? null : content_binding[0])
     c_bind.push(content_binding[1] === undefined ? null : content_binding[1])
-    return await worker.call("potoken", "potoken", {c_bind, mint_cold_start_token, mint_error_token})
+    return await worker.call("potoken", "potoken", {content_binding: c_bind, mint_cold_start_token, mint_error_token})
 }
 async function python_fetch(request, proxy) {
     if (proxy) {
@@ -50,7 +48,6 @@ async function python_fetch(request, proxy) {
         body: body === null ? undefined : body,
         credentials: credentials
         })
-        console.log(response.headers)
         return {stream: response.body, status: response.status, headers: [...response.headers.entries()]}
     }
 }
@@ -117,7 +114,6 @@ async function prepare() {
     await worker.waitForLink("content");
     set_status("Reading this site's cookies…");
     const cookies = await worker.call("content", "cookies", {});
-    console.log(cookies);
     set_status("Starting Python (Pyodide) and loading yt-dlp…");
     importScripts(
         "/libs/pyodide/pyodide.js"
@@ -137,7 +133,6 @@ let setupPromise;
 function setupPython() {
     if (!setupPromise) {
         setupPromise = (async () => {
-            console.log("start python (good luck...)")
             set_status("Initializing yt-dlp…");
             await pyodide.runPythonAsync(await (await fetch("/core/worker/dl.py")).text())
         })();
