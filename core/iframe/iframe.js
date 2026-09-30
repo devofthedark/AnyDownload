@@ -192,23 +192,45 @@ loadFormatsBtn.addEventListener('click', async () => {
 let worker = new Worker("/core/worker/worker.js");
 iframeNode.connect("worker", workerLink(worker));
 
-iframeNode.connect('content', windowLink(window.parent, '*', { accept: '*' }));
+// The content script sends us its end of a private channel (see content.js). The page is our parent
+// window too and can post here as well, so only take a port whose token content stored for us.
+window.addEventListener('message', async function bridgeHandshake(e) {
+    if (e.source !== window.parent || e.data?.[NS] !== 'bridge' || !e.ports[0]) return;
+    const key = `bridge:${e.data.token}`;
+    const { [key]: valid } = await chrome.storage.local.get(key);
+    if (!valid) return;
+    window.removeEventListener('message', bridgeHandshake);
+    await chrome.storage.local.remove(key);
+    iframeNode.connect('content', messagePortLink(e.ports[0]));
+    // give the worker and the content script a direct channel of their own
+    const { port1, port2 } = new MessageChannel();
+    worker.postMessage({ [NS]: 'bridge', to: 'content' }, [port1]);
+    iframeNode.notify('content', 'bridge', { port: port2 }, { transfer: [port2] });
+});
 iframeNode.route("sw", "content");
-iframeNode.route("potoken", "content")
 
+// The page can reach the sandbox frame through window.frames and navigate it to a page of its own,
+// so whatever loads there has to prove it's the sandbox: it answers with the secret from its URL,
+// which no other document can read.
+const sandboxSecret = crypto.getRandomValues(new Uint32Array(4)).join('-');
 const sandbox_iframe = document.createElement("iframe");
-sandbox_iframe.src = chrome.runtime.getURL("/core/sandbox/sandbox.html");
+sandbox_iframe.src = chrome.runtime.getURL(`/core/sandbox/sandbox.html#${sandboxSecret}`);
 sandbox_iframe.sandbox = "allow-scripts";
 sandbox_iframe.style.display = "none";
+sandbox_iframe.addEventListener('load', () => {
+    const { port1, port2 } = new MessageChannel();
+    port1.onmessage = (e) => {
+        port1.onmessage = null;
+        if (e.data?.[NS] !== 'sandbox' || e.data.secret !== sandboxSecret) {
+            port1.close();
+            return;
+        }
+        iframeNode.connect("sandbox", messagePortLink(port1));
+    };
+    // the sandbox has an opaque origin, so it can't be addressed by one
+    sandbox_iframe.contentWindow.postMessage({ [NS]: 'sandbox' }, '*', [port2]);
+}, { once: true });
 document.body.appendChild(sandbox_iframe);
-
-
-iframeNode.connect("sandbox", windowLink(sandbox_iframe.contentWindow, '*', { accept: '*' }));
-
-
-const { port1, port2 } = new MessageChannel();
-worker.postMessage({ [NS]: 'bridge', to: 'content' }, [port1]);
-window.parent.postMessage({ [NS]: 'bridge', to: 'worker' }, '*', [port2]);
 
 closeBtn.addEventListener('click', () => {
     iframeNode.notify('content', 'close', {});

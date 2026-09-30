@@ -49,13 +49,34 @@ chrome.action.onClicked.addListener(async (tab) => {
         injectImmediately: true,
         world: "ISOLATED"
     });
-    await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["/rpc.js", "/core/content/potoken.js"],
-        injectImmediately: true,
-        world: "MAIN"
-    });
 });
+
+// Runs in the page's MAIN world, where YouTube's player keeps its PO token minter. Injected once per
+// token rather than leaving an RPC node there: anything in the MAIN world is reachable by the page.
+async function mintPotokenInPage({ content_binding, mint_cold_start_token, mint_error_token }) {
+    try {
+        const token = await window["havuokmhhs-0"]?.bevasrs?.wpc().then((client) => client.mws({
+            c: content_binding,
+            mc: mint_cold_start_token,
+            me: mint_error_token
+        }));
+        return { token };
+    } catch (e) {
+        return { error: String(e?.message ?? e) };
+    }
+}
+
+async function potoken(params, sender) {
+    const [injection] = await chrome.scripting.executeScript({
+        target: { tabId: sender.tab.id, frameIds: [sender.frameId ?? 0] },
+        world: "MAIN",
+        func: mintPotokenInPage,
+        args: [params]
+    });
+    const { token, error } = injection?.result ?? {};
+    if (error) throw new Error(`minting a PO token failed: ${error}`);
+    return token;
+}
 
 
 // Incognito tabs and Firefox containers have their own cookie stores, and without a storeId
@@ -81,6 +102,9 @@ chrome.runtime.onConnect.addListener((port) => {
     createNode("sw")
         .handle("cookies", async (params, { signal }) => {
             return await cookies(params.url, tab);
+        })
+        .handle("potoken", async (params, { signal }) => {
+            return await potoken(params, port.sender);
         })
         .connect("content", portLink(port));
 })
