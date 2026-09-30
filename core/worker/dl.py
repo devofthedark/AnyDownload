@@ -1,7 +1,7 @@
-import functools, io, os, re, sys
+import contextlib, errno, functools, io, os, re, sys
 from types import NoneType
 import yt_dlp, js
-from pyodide.ffi import to_js, run_sync
+from pyodide.ffi import to_js, run_sync, JsException
 from collections.abc import Iterable
 
 def _opts(**kw):
@@ -189,6 +189,26 @@ class NativeExtractorPTP(PoTokenProvider):
 
 # Patch file writes over OPFS to avoid wasm 4GB memory limit
 
+# yt-dlp handles file errors with `except OSError` (and retries some errnos), but OPFS failures
+# arrive as JsException, which would skip all of that. Name of the DOMException -> OSError to raise.
+_OPFS_ERRORS = {
+    "NotFoundError": (FileNotFoundError, errno.ENOENT),
+    "TypeMismatchError": (IsADirectoryError, errno.EISDIR),
+    # the file is locked, e.g. still open through another sync access handle
+    "NoModificationAllowedError": (PermissionError, errno.EACCES),
+    "InvalidModificationError": (PermissionError, errno.EACCES),
+    "QuotaExceededError": (OSError, errno.ENOSPC),
+}
+
+@contextlib.contextmanager
+def _os_errors(path):
+    try:
+        yield
+    except JsException as e:
+        name = getattr(e, "name", None) or str(e).split(":", 1)[0]
+        cls, code = _OPFS_ERRORS.get(name, (OSError, errno.EIO))
+        raise cls(code, f"{name}: {getattr(e, 'message', None) or e}", path) from e
+
 class OPFSFile(io.RawIOBase):
     """
     File-like access for OPFS files
@@ -199,7 +219,10 @@ class OPFSFile(io.RawIOBase):
     """
     def __init__(self, store: OPFSStore, name, mode):
         self._store = store
-        self._handle = store._sync_handle(name)
+        if "x" in mode and store.exists(name):
+            raise FileExistsError(errno.EEXIST, "File exists", name)
+        # like open(): reading ("r", "r+") needs the file to be there already
+        self._handle = store._sync_handle(name, create=any(c in mode for c in "wax"))
         self.name = name
         self.mode = mode
         self._scratch = js.Uint8Array.new(1 << 20) # 1MB buffer before read/write to disk, can change with requested view size
@@ -222,7 +245,7 @@ class OPFSFile(io.RawIOBase):
 
     def writable(self) -> bool:
         js.console.debug(f'[OPFS translation layer] OPFSFile(name="{self.name}").writable()')
-        return "w" in self.mode or "a" in self.mode or "+" in self.mode
+        return any(c in self.mode for c in "wax+")
     def readable(self) -> bool:
         js.console.debug(f'[OPFS translation layer] OPFSFile(name="{self.name}").readable()')
         return "r" in self.mode or "+" in self.mode
@@ -238,7 +261,8 @@ class OPFSFile(io.RawIOBase):
             return 0
         view = self._view(n)
         view.assign(b)
-        written = self._handle.write(view, _opts(at=self._pos))
+        with _os_errors(self.name):
+            written = self._handle.write(view, _opts(at=self._pos))
         if written != n:
             raise OSError(f"Small write to {self.name}: {written}/{n}")
         self._pos += written
@@ -247,7 +271,8 @@ class OPFSFile(io.RawIOBase):
     def readinto(self, buf: bytearray) -> int:
         n = len(buf)
         view = self._view(n)
-        got = self._handle.read(view, _opts(at=self._pos))
+        with _os_errors(self.name):
+            got = self._handle.read(view, _opts(at=self._pos))
         if got:
             view.subarray(0, got).assign_to(memoryview(buf)[:got])
             self._pos += got
@@ -285,7 +310,7 @@ class OPFSFile(io.RawIOBase):
             super().close()
         finally:
             self._handle.close()
-            self._store._forget(self.name)
+            self._store._forget(self)
 
 class OPFSStore:
     """Owner of an OPFS dir"""
@@ -308,14 +333,27 @@ class OPFSStore:
         return os.path.basename(path)
 
     def _file_handle(self, name, create=True):
-        return run_sync(self._dir.getFileHandle(name, _opts(create=create)))
+        with _os_errors(name):
+            return run_sync(self._dir.getFileHandle(name, _opts(create=create)))
 
-    def _sync_handle(self, name):
-        return run_sync(self._file_handle(name).createSyncAccessHandle())
+    def _sync_handle(self, name, create=True):
+        handle = self._file_handle(name, create=create)
+        with _os_errors(name):
+            return run_sync(handle.createSyncAccessHandle())
 
-    def _forget(self, name):
-        self._live.pop(name)
-        self._live_raw.pop(name)
+    def _forget(self, raw: OPFSFile):
+        # only if it's still the registered one, not an older handle closed late
+        if self._live_raw.get(raw.name) is raw:
+            del self._live_raw[raw.name]
+            del self._live[raw.name]
+
+    def close_all(self):
+        """Close every file still open, e.g. after a download failed halfway"""
+        for f in list(self._live.values()):
+            try:
+                f.close()
+            except Exception as e:
+                js.console.warn(f'[OPFS translation layer] could not close {f}: {e}')
 
     def _wrap(self, raw: OPFSFile, mode):
         if raw.readable() and raw.writable():
@@ -332,9 +370,12 @@ class OPFSStore:
     def open_file(self, path, mode="rb"):
         js.console.debug(f'[OPFS translation layer] OPFSStore.open_file("{path}", mode="{mode}")')
         name = self._key(path)
+        # A file can only have one sync access handle at a time, so a second open() of the same
+        # file closes the first instead of failing. Callers get a handle in the mode they asked for.
         existing = self._live.get(name)
-        if existing and not existing.closed:
-            return existing
+        if existing is not None and not existing.closed:
+            js.console.debug(f'[OPFS translation layer] "{name}" is already open, closing it first')
+            existing.close()
         f = OPFSFile(self, name, mode)
         self._live_raw[name] = f
         self._live[name] = self._wrap(f, mode)
@@ -346,7 +387,9 @@ class OPFSStore:
         live = self._live_raw.get(name)
         if live and not live.closed:
             return live._handle.getSize()
-        return run_sync(self._file_handle(name, create=False).getFile()).size
+        handle = self._file_handle(name, create=False)
+        with _os_errors(path):
+            return run_sync(handle.getFile()).size
 
     def exists(self, path):
         name = self._key(path)
@@ -355,7 +398,7 @@ class OPFSStore:
         try:
             self._file_handle(name, create=False)
             return True
-        except Exception:
+        except OSError:
             return False
 
     def rename(self, src, dst):
@@ -364,10 +407,19 @@ class OPFSStore:
         # https://caniuse.com/mdn-api_filesystemhandle_move
         # keep a lookout for any changes
 
-        run_sync(self._file_handle(self._key(src), create=False).move(self._key(dst)))
+        src_name, dst_name = self._key(src), self._key(dst)
+        if src_name == dst_name:
+            return
+        handle = self._file_handle(src_name, create=False)
+        # os.replace() overwrites the destination; move() isn't guaranteed to
+        if self.exists(dst_name):
+            self.remove(dst_name)
+        with _os_errors(src):
+            run_sync(handle.move(dst_name))
 
     def remove(self, path):
-        run_sync(self._dir.removeEntry(self._key(path)))
+        with _os_errors(path):
+            run_sync(self._dir.removeEntry(self._key(path)))
 
 
 OPFS_PREFIX = "/OPFS"
@@ -391,40 +443,43 @@ for mod in list(sys.modules.values()):
             pass
 ytu.sanitize_open = sanitize_open
 
+def _in_opfs(p):
+    return os.fspath(p).startswith(OPFS_PREFIX + "/")
+
 _getsize = os.path.getsize
 def size(p):
-    p = str(p)
-    return dir_store.size(p) if p.startswith(OPFS_PREFIX) else _getsize(p)
+    return dir_store.size(os.fspath(p)) if _in_opfs(p) else _getsize(p)
 os.path.getsize = size
 
 _exists = os.path.exists
 def exists(p):
-    p = str(p)
-    return dir_store.exists(p) if p.startswith(OPFS_PREFIX) else _exists(p)
+    return dir_store.exists(os.fspath(p)) if _in_opfs(p) else _exists(p)
 os.path.exists = exists
+
+# the store only holds files, so anything in it that exists is a file
+_isfile = os.path.isfile
+def isfile(p):
+    return dir_store.exists(os.fspath(p)) if _in_opfs(p) else _isfile(p)
+os.path.isfile = isfile
 
 _replace = os.replace
 def replace(src, dist, *args, **kwargs):
-    src, dist = str(src), str(dist)
-    return dir_store.rename(src, dist) if src.startswith(OPFS_PREFIX) else _replace(src, dist, *args, **kwargs)
+    return dir_store.rename(os.fspath(src), os.fspath(dist)) if _in_opfs(src) else _replace(src, dist, *args, **kwargs)
 os.replace = replace
 
 _rename = os.rename
 def rename(src, dist, *args, **kwargs):
-    src, dist = str(src), str(dist)
-    return dir_store.rename(src, dist) if src.startswith(OPFS_PREFIX) else _rename(src, dist, *args, **kwargs)
+    return dir_store.rename(os.fspath(src), os.fspath(dist)) if _in_opfs(src) else _rename(src, dist, *args, **kwargs)
 os.rename = rename
 
 _remove = os.remove
 def remove(p, *args, **kwargs):
-    p = str(p)
-    return dir_store.remove(p) if p.startswith(OPFS_PREFIX) else _remove(p, *args, **kwargs)
+    return dir_store.remove(os.fspath(p)) if _in_opfs(p) else _remove(p, *args, **kwargs)
 os.remove = remove
 
 _unlink = os.unlink
 def unlink(p, *args, **kwargs):
-    p = str(p)
-    return dir_store.remove(p) if p.startswith(OPFS_PREFIX) else _unlink(p, *args, **kwargs)
+    return dir_store.remove(os.fspath(p)) if _in_opfs(p) else _unlink(p, *args, **kwargs)
 os.unlink = unlink
 
 os.utime = lambda *a, **k: None
@@ -841,4 +896,9 @@ def download(fmt=None, output=None):
     elif output:
         # merges already land in `output`; this covers single-file downloads
         ydl.add_post_processor(MediabunnyVideoRemuxerPP(ydl, preferedformat=output), when="post_process")
-    ydl.download([run_sync(js.cur_url())])
+    try:
+        ydl.download([run_sync(js.cur_url())])
+    finally:
+        # a file left open (say the download failed halfway) keeps its lock, and the worker then
+        # can't clear the directory before the next download, so its leftovers would get saved too
+        dir_store.close_all()
