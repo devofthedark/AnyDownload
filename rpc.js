@@ -224,26 +224,6 @@
         };
     }
 
-    function windowLink(targetWindow, targetOrigin, { accept = targetOrigin } = {}) {
-        let handler;
-        // When both ends share one window (content <-> potoken), each also hears what it posts
-        // itself, and would forward its own envelopes again until MAX_HOPS. Stamp what this link
-        // sends so it can skip its own. Not crypto.randomUUID: that's missing on http: pages.
-        const tag = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-        return {
-            send: (env, transfer) => targetWindow.postMessage({ ...env, link: tag }, targetOrigin, transfer ?? []),
-            listen: (fn) => {
-                handler = (e) => {
-                    if (e.source !== targetWindow) return;
-                    if (accept !== '*' && e.origin !== accept) return;
-                    if (e.data?.link === tag) return;
-                    fn(e.data);
-                };
-                globalThis.addEventListener('message', handler);
-            },
-            stop: () => globalThis.removeEventListener('message', handler),
-        };
-    }
     function portLink(port) {
         let handler;
         return {
@@ -276,12 +256,11 @@
     }
     
     
-    const RPC = { createNode, workerLink, windowLink, portLink, messagePortLink };
+    const RPC = { createNode, workerLink, portLink, messagePortLink };
     
     global.RPC = RPC;
     global.createNode = createNode;
     global.workerLink = workerLink;
-    global.windowLink = windowLink;
     global.portLink = portLink;
     global.messagePortLink = messagePortLink;
     

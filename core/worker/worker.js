@@ -11,7 +11,6 @@ const worker = createNode("worker");
 worker.connect("iframe", workerLink(self));
 worker.route("sw", "iframe");
 worker.route("sandbox", "iframe");
-worker.route("potoken", "iframe")
 ORIGIN = self.origin
 const NS = 'ytx';
 self.addEventListener('message', function bridgeHandshake(e) {
@@ -34,7 +33,7 @@ async function mint_potoken(content_binding, mint_cold_start_token, mint_error_t
     const c_bind = [];
     c_bind.push(content_binding[0] === undefined ? null : content_binding[0])
     c_bind.push(content_binding[1] === undefined ? null : content_binding[1])
-    return await worker.call("potoken", "potoken", {content_binding: c_bind, mint_cold_start_token, mint_error_token})
+    return await worker.call("content", "potoken", {content_binding: c_bind, mint_cold_start_token, mint_error_token})
 }
 // Only requests to the page's own origin can carry the site's cookies: sent from the content
 // script they're first-party. This worker sits inside the extension's frame, so the browser never

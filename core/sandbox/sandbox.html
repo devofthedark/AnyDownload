@@ -7,7 +7,15 @@
   <script src="/rpc.js"></script>
   <script type="module">
     const sandbox = createNode("sandbox");
-    sandbox.connect("iframe", windowLink(window.parent, "*", { accept: "*" }));
+    // The panel sends us a private channel, and we prove we're the real sandbox with the secret in
+    // our URL (see iframe.js). The page can post here too, but it isn't our parent.
+    window.addEventListener("message", function handshake(e) {
+      if (e.source !== window.parent || e.data?.ytx !== "sandbox" || !e.ports[0]) return;
+      window.removeEventListener("message", handshake);
+      const port = e.ports[0];
+      port.postMessage({ ytx: "sandbox", secret: location.hash.slice(1) });
+      sandbox.connect("iframe", messagePortLink(port));
+    });
     sandbox.handle("jsc", async (params, { signal }) => {
       console.debug("[Sandbox] got JS challenge solve request");
       let code = params.code;

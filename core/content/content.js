@@ -23,7 +23,8 @@ function callSw(method, params) {
     }
     return content.call("sw", method, params);
 }
-content.connect("potoken", windowLink(window, location.origin))
+// Every link below is a MessagePort or runtime port. Nothing listens on the page's window: the
+// page can read and forge anything posted there.
 content.handle("proxyfetch", async (request, { transfer }) => {
     let { method, url, body, headers, credentials, referrer } = request;
     const response = await fetch(url, {
@@ -48,14 +49,12 @@ content.handle("cur_url", async (params, {signal}) => {
 content.handle("cookies", async (params, { signal }) => {
     return await callSw("cookies", { url: location.href });
 });
-window.addEventListener('message', function bridgeHandshake(e) {
-    if (e.origin !== ORIGIN) return;
-    if (e.data?.ytx !== 'bridge') return;
-    // One-time handshake per session — remove immediately so a leftover
-    // listener from a previous open/close cycle can't also grab the next
-    // session's port and create a second "content" node on the same link.
-    window.removeEventListener('message', bridgeHandshake);
-    const port = e.ports[0];
+// minted by the background in the page's MAIN world, see background.js
+content.handle("potoken", async (params) => {
+    return await callSw("potoken", params);
+});
+// the iframe hands over a direct channel to the worker, so fetch streams skip a hop
+content.handle("bridge", async ({ port }) => {
     content.connect('worker', messagePortLink(port));
     content.route("worker", "worker")
 });
@@ -86,11 +85,18 @@ async function main() {
         border-radius: 12px !important;
         box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35) !important;
     `;
+    // The iframe gets its end of this channel in a message addressed to the extension's origin,
+    // which the page can't see. The page can post to the iframe too, so the port comes with a
+    // one-time token the iframe checks against extension storage, which the page can't touch.
+    const channel = new MessageChannel();
+    const token = crypto.getRandomValues(new Uint32Array(4)).join("-");
+    const tokenKey = `bridge:${token}`;
+    iframe.addEventListener("load", async () => {
+        await chrome.storage.local.set({ [tokenKey]: true });
+        iframe.contentWindow.postMessage({ ytx: "bridge", token }, ORIGIN, [channel.port2]);
+    }, { once: true });
     shadow.appendChild(iframe);
-    content.connect(
-        "iframe",
-        windowLink(iframe.contentWindow, ORIGIN),
-    );
+    content.connect("iframe", messagePortLink(channel.port1));
     content.route("worker", "iframe")
 
     // the iframe reports how far its header has been dragged since dragStart
@@ -117,8 +123,9 @@ async function main() {
         // node — that's what caused the cross-session RPC loops.
         content.disconnect("iframe");
         content.disconnect("worker");
-        content.disconnect("potoken");
         content.disconnect("sw");
+        // in case the iframe never picked it up
+        chrome.storage.local.remove(tokenKey);
         window.__webvideoDlActive = false;
     });
 }
