@@ -49,6 +49,6 @@
     "128":  "logo/logo-128.png"
   },
   "sandbox": {
-    "pages": ["core/sandbox/sandbox.html", "/rpc.js", "/core/sandbox/sandbox.js"]
+    "pages": ["core/sandbox/sandbox.html"]
   }
 }

@@ -108,7 +108,7 @@ from yt_dlp.extractor.youtube.jsc._builtin.ejs import EJSBaseJCP
 class NativeJSEngineJCP(EJSBaseJCP):
     JS_RUNTIME_NAME = "yt-dlp-web-sandbox-runner"
     PROVIDER_VERSION = "0.0.1"
-    BUG_REPORT_LOCATION = "https://github.com/devofthedark/yt-dlp-web/issues?q="
+    BUG_REPORT_LOCATION = "https://github.com/devofthedark/AnyDownload/issues?q="
     def _run_js_runtime(self, stdin):
         resp = run_sync(js.jsc(stdin))
         return resp
@@ -137,7 +137,7 @@ from yt_dlp.extractor.youtube.pot.utils import get_webpo_content_binding, WEBPO_
 class NativeExtractorPTP(PoTokenProvider):
     PROVIDER_VERSION = "0.0.1"
     PROVIDER_NAME = "NativeBrowserExtractor"
-    BUG_REPORT_LOCATION = "https://github.com/devofthedark/yt-dlp-web/"
+    BUG_REPORT_LOCATION = "https://github.com/devofthedark/AnyDownload/"
 
     _SUPPORTED_CLIENTS = WEBPO_CLIENTS
 
@@ -195,7 +195,7 @@ class OPFSFile(io.RawIOBase):
         js.console.debug(f'[OPFS translation layer] OPFSFile(name="{self.name}").readable()')
         return "r" in self.mode or "+" in self.mode
     def seekable(self) -> bool:
-        True
+        return True
 
     def write(self, b: bytearray | str) -> int:
         js.console.debug(f'[OPFS translation layer] OPFSFile(name="{self.name}").write([len {len(b)}])')
@@ -344,7 +344,7 @@ orig = ytu.sanitize_open
 dir_store = OPFSStore.open("_yt_dlp_OPFS_store")
 
 def sanitize_open(filename, open_mode):
-    print(f"[OPFS translation layer] sanitize_open(\"{filename}\", \"{open_mode}\")")
+    js.console.debug(f'[OPFS translation layer] sanitize_open("{filename}", "{open_mode}")')
     if filename == "-":
         return sys.stdout.buffer, filename
     return dir_store.open_file(filename, open_mode), filename
@@ -806,5 +806,4 @@ def download(fmt=None, output=None):
     elif output:
         # merges already land in `output`; this covers single-file downloads
         ydl.add_post_processor(MediabunnyVideoRemuxerPP(ydl, preferedformat=output), when="post_process")
-    info = ydl.download([run_sync(js.cur_url())])
-    print(info)
+    ydl.download([run_sync(js.cur_url())])

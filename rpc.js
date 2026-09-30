@@ -281,4 +281,3 @@
     global.messagePortLink = messagePortLink;
     
 })(typeof self !== 'undefined' ? self : this);
-console.log("RPC lib loaded")

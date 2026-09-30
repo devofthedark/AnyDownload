@@ -65,9 +65,7 @@ async function cookies(url) {
 }
 
 sw.handle("cookies", async (params, { signal }) => {
-    const res = await cookies(params.url);
-    console.log(res);
-    return res;
+    return await cookies(params.url);
 });
 
 
@@ -90,12 +88,3 @@ chrome.runtime.onInstalled.addListener(function (details) {
         });
     }
 });
-
-sw.handle("dl", async (params) => {
-    const {name, file} = params;
-    const url = URL.createObjectURL(file);
-    let e = await chrome.downloads.download({url: url, filename: name});
-    console.debug(e);
-    URL.revokeObjectURL(url);
-    return 0;
-})

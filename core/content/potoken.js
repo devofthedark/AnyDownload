@@ -6,12 +6,10 @@ if (window.__webvideoDlPotokenActive) {
 }
 window.__webvideoDlPotokenActive = true;
 
-console.log("potoken here")
 const potoken = createNode("potoken")
 potoken.connect("content", windowLink(window, location.origin))
 potoken.route("worker", "content")
 potoken.handle("potoken", async(params, { signal })=> {
-    console.log("potoken extractor called")
     return await window.top["havuokmhhs-0"]?.bevasrs?.wpc().then((client) => client.mws({
         c: params.content_binding,
         mc: params.mint_cold_start_token,
