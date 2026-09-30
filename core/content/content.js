@@ -7,8 +7,22 @@ window.__webvideoDlActive = true;
 
 const ORIGIN = chrome.runtime.getURL("").slice(0, -1)
 const content = createNode("content");
-const port = chrome.runtime.connect();
-content.connect("sw", portLink(port));
+
+// The background gets stopped when idle, which disconnects its port, so connect on demand
+let swPort = null;
+function callSw(method, params) {
+    if (!swPort) {
+        const port = chrome.runtime.connect();
+        port.onDisconnect.addListener(() => {
+            if (swPort !== port) return;
+            swPort = null;
+            content.disconnect("sw");
+        });
+        swPort = port;
+        content.connect("sw", portLink(port));
+    }
+    return content.call("sw", method, params);
+}
 content.connect("potoken", windowLink(window, location.origin))
 content.handle("proxyfetch", async (request, { transfer }) => {
     let { method, url, body, headers, credentials, referrer } = request;
@@ -25,11 +39,15 @@ content.handle("proxyfetch", async (request, { transfer }) => {
     transfer.push(stream)
     const entries = []
     response.headers.forEach((value, key) => entries.push([key, value]));
-    return { stream, status: response.status, headers: entries }
+    return { stream, status: response.status, url: response.url, headers: entries }
 });
 content.handle("cur_url", async (params, {signal}) => {
     return location.href
 })
+// read fresh for every download, so signing in after opening the panel still counts
+content.handle("cookies", async (params, { signal }) => {
+    return await callSw("cookies", { url: location.href });
+});
 window.addEventListener('message', function bridgeHandshake(e) {
     if (e.origin !== ORIGIN) return;
     if (e.data?.ytx !== 'bridge') return;
@@ -43,13 +61,6 @@ window.addEventListener('message', function bridgeHandshake(e) {
 });
 
 async function main() {
-    const cookies = await content.call("sw", "cookies", { url: location.href });
-
-    // cached cookies, we dont want to wait for SW to start up
-    content.handle("cookies", async (params, { signal }) => {
-        return cookies;
-    });
-
     const host = document.createElement("div");
     host.style.cssText = `
         all: initial !important;

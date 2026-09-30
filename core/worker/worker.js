@@ -36,23 +36,46 @@ async function mint_potoken(content_binding, mint_cold_start_token, mint_error_t
     c_bind.push(content_binding[1] === undefined ? null : content_binding[1])
     return await worker.call("potoken", "potoken", {content_binding: c_bind, mint_cold_start_token, mint_error_token})
 }
+// Only requests to the page's own origin can carry the site's cookies: sent from the content
+// script they're first-party. This worker sits inside the extension's frame, so the browser never
+// sends it any, and the page's cross-site requests are third-party, which get blocked.
+// `proxy` asks for the page's Origin/Referer, which also means sending it from the content script.
+// `request.anonymous` requests never get cookies.
 async function python_fetch(request, proxy) {
-    if (proxy) {
+    const sameOrigin = new URL(request.url).origin === pageOrigin;
+    if (sameOrigin || proxy) {
         await worker.waitForLink("content");
-        return await worker.call("content", "proxyfetch", request);
-    } else {
-        let { method, url, body, headers, credentials } = request;
-        const response = await fetch(url, {
+        const credentials = sameOrigin && !request.anonymous ? "include" : "omit";
+        try {
+            return await worker.call("content", "proxyfetch", { ...request, credentials });
+        } catch (e) {
+            // fetch's network/CORS failure, e.g. a redirect to another origin; send it from here instead
+            if (e.name !== "TypeError") throw e;
+            console.debug(`page fetch of ${request.url} failed (${e.message}), retrying from the worker`);
+        }
+    }
+    const { method, url, body, headers } = request;
+    const response = await fetch(url, {
         method: method,
         headers: headers,
         body: body === null ? undefined : body,
-        credentials: credentials
-        })
-        return {stream: response.body, status: response.status, headers: [...response.headers.entries()]}
-    }
+        credentials: "omit"
+    });
+    return { stream: response.body, status: response.status, url: response.url, headers: [...response.headers.entries()] };
+}
+
+// The page the panel is open on and its cookies, re-read before every operation: the page can
+// navigate without a reload (e.g. YouTube), and the user can sign in after opening the panel.
+let pageUrl, pageOrigin;
+async function readPage() {
+    pageUrl = await worker.call("content", "cur_url", {});
+    pageOrigin = new URL(pageUrl).origin;
+    set_status("Reading this site's cookies…");
+    // yt-dlp loads this (the cookiefile option) to see what the browser sends, e.g. that you're signed in
+    pyodide.FS.writeFile("/cookies.txt", await worker.call("content", "cookies", {}));
 }
 async function cur_url() {
-    return await worker.call("content", "cur_url", {});
+    return pageUrl;
 }
 async function progress_hook(d) {
     // `d` is a PyProxy (PyDict) borrowed for the duration of this call — pull out
@@ -77,6 +100,34 @@ async function progress_hook(d) {
 
 let pyodide;
 
+// Each panel downloads into its own OPFS directory, so panels open in different tabs can't delete
+// or save each other's files. A panel holds a Web Lock named after its directory for as long as it's
+// open (the lock goes when the worker does), which tells a closed panel's leftovers from a live one's.
+const STORE_PREFIX = '_yt_dlp_OPFS_store';
+const STORE_DIR = `${STORE_PREFIX}_${crypto.randomUUID()}`;
+
+// Taken before anything creates the directory, so no other panel's cleanup can see it unlocked
+const storeLocked = new Promise((granted) => {
+    navigator.locks.request(STORE_DIR, () => {
+        granted();
+        return new Promise(() => {}); // never settles: hold the lock until this worker ends
+    });
+});
+
+// Delete the directories of panels that have since closed (and the one all panels used to share)
+async function removeStaleStores() {
+    const held = new Set((await navigator.locks.query()).held.map((lock) => lock.name));
+    const root = await navigator.storage.getDirectory();
+    const stale = [];
+    for await (const [name, handle] of root.entries()) {
+        if (handle.kind === 'directory' && name.startsWith(STORE_PREFIX) && !held.has(name)) stale.push(name);
+    }
+    for (const name of stale) {
+        await root.removeEntry(name, { recursive: true }).catch((e) => console.warn(`could not remove ${name}`, e));
+    }
+}
+storeLocked.then(removeStaleStores).catch((e) => console.warn('could not clean up old downloads', e));
+
 // e.g. "Merging video and audio into .mp4, re-encoding audio from opus to aac"
 function muxLabel(label, reencoding) {
     if (!reencoding.length) return label;
@@ -84,7 +135,7 @@ function muxLabel(label, reencoding) {
     return `${label}, re-encoding ${tracks.join(' and ')}`;
 }
 
-const merger = createMerger('_yt_dlp_OPFS_store', {
+const merger = createMerger(STORE_DIR, {
     onProgress: ({ jobId, label, reencoding, progress }) =>
         worker.notify('iframe', 'muxProgress', { jobId, label: muxLabel(label || 'Merging', reencoding), progress }),
 });
@@ -112,8 +163,6 @@ async function outputFormats() {
 async function prepare() {
     set_status("Connecting to the page…");
     await worker.waitForLink("content");
-    set_status("Reading this site's cookies…");
-    const cookies = await worker.call("content", "cookies", {});
     set_status("Starting Python (Pyodide) and loading yt-dlp…");
     importScripts(
         "/libs/pyodide/pyodide.js"
@@ -124,7 +173,6 @@ async function prepare() {
         packages: VENDOR.wheels // from requirements.txt, see scripts/vendor.mjs
     })
 
-    await pyodide.FS.writeFile("/cookies.txt", cookies);
     pyodide.registerJsModule('mb_bridge', merger);
 }
 
@@ -134,6 +182,8 @@ function setupPython() {
     if (!setupPromise) {
         setupPromise = (async () => {
             set_status("Initializing yt-dlp…");
+            await storeLocked; // dl.py creates the directory
+            pyodide.globals.set("STORE_DIR", STORE_DIR);
             await pyodide.runPythonAsync(await (await fetch("/core/worker/dl.py")).text())
         })();
         setupPromise.catch(() => { setupPromise = undefined; });
@@ -143,22 +193,24 @@ function setupPython() {
 
 async function listFormats() {
     await setupPython();
+    await readPage();
     set_status("Extracting video info from this page…");
     return JSON.parse(await pyodide.runPythonAsync("list_formats()"));
 }
 
 async function runDownload(format, output) {
     await setupPython();
+    await readPage();
     const root = await navigator.storage.getDirectory();
     // Clear out the previous download's files here rather than right after handing them
     // off: the browser reads the blob lazily, so deleting the OPFS file too early can
     // cut the saved file short. dl.py's download() recreates the directory.
-    await root.removeEntry('_yt_dlp_OPFS_store', { recursive: true }).catch(() => {});
+    await root.removeEntry(STORE_DIR, { recursive: true }).catch(() => {});
     pyodide.globals.set("_web_format", format || "");
     pyodide.globals.set("_web_output", output || "");
     set_status("Extracting video info from this page…");
     await pyodide.runPythonAsync("download(_web_format, _web_output)");
-    const store = await root.getDirectoryHandle("_yt_dlp_OPFS_store");
+    const store = await root.getDirectoryHandle(STORE_DIR);
     const saved = [];
     for await (const [name, handle] of store.entries()) {
         if (handle.kind !== 'file') continue;
