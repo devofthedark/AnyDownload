@@ -157,12 +157,21 @@ function fillSelect(sel, formats, label) {
 function formatSelector() {
     const v = videoSel.value, a = audioSel.value;
     if (v === 'default' && a === 'default') return undefined;
-    if (v === 'none') return a === 'default' ? 'ba' : a;
-    if (a === 'none') return v === 'default' ? 'bv' : v;
+    // Sites that don't serve audio and video separately only have formats with both, so fall back
+    // to those; the worker then drops the unwanted track (see onlyTrack)
+    if (v === 'none') return a === 'default' ? 'ba/b' : a;
+    if (a === 'none') return v === 'default' ? 'bv/b' : v;
     if (v === 'default') return `bv+${a}`;
     // a format that already carries audio doesn't need a second track merged in
     if (a === 'default') return hasCodec(formatsById.get(v)?.acodec) ? v : `${v}+ba`;
     return `${v}+${a}`;
+}
+
+// which track to keep when the other one was set to "None", or undefined for both
+function onlyTrack() {
+    if (videoSel.value === 'none') return 'audio';
+    if (audioSel.value === 'none') return 'video';
+    return undefined;
 }
 
 function updateStartEnabled() {
@@ -268,7 +277,7 @@ startBtn.addEventListener('click', async () => {
     statusEl.textContent = 'Starting download…';
     const output = outputSel.value === 'default' ? undefined : outputSel.value;
     try {
-        const saved = await iframeNode.call('worker', 'start', { format: formatSelector(), output }, { timeout: 0 });
+        const saved = await iframeNode.call('worker', 'start', { format: formatSelector(), output, only: onlyTrack() }, { timeout: 0 });
         statusEl.textContent = `Finished, saved ${saved.length} file${saved.length === 1 ? '' : 's'}`;
     } catch (e) {
         statusEl.textContent = `Error: ${e.message}`;

@@ -114,6 +114,14 @@
                 };
             },
 
+            probeTracks: async function (name) {
+                var input = await openInput(await dir(), name);
+                return {
+                    video: !!(await input.getPrimaryVideoTrack()),
+                    audio: !!(await input.getPrimaryAudioTrack()),
+                };
+            },
+
             probeAudio: async function (name) {
                 var handle = await dir();
                 var input = await openInput(handle, name);

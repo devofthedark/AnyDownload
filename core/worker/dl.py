@@ -687,6 +687,57 @@ class MediabunnyExtractAudioPP(_MediabunnyPP):
         info['ext'] = ext
         return [path], info
         
+def _has_track(pp, info, kind):
+    """Whether the downloaded file has a `kind` ("video"/"audio") track. Asks the file itself:
+    plenty of sites don't report codecs, so the info dict can't be trusted for this"""
+    name = pp.store._key(info['filepath'])
+    live = pp.store._live.get(name)
+    if live is not None and not live.closed:
+        live.close()
+    try:
+        return bool(getattr(run_sync(pp.bridge.probeTracks(name)), kind))
+    except Exception as err:
+        raise PostProcessingError(f'could not read the tracks of "{name}": {err}') from err
+
+# "Audio only" / "video only" fall back to formats with both tracks on sites that don't serve them
+# separately (see formatSelector in iframe.js), so these drop the track that wasn't asked for.
+
+class MediabunnyAudioOnlyPP(MediabunnyExtractAudioPP):
+    def run(self, info):
+        if not _has_track(self, info, 'video'):
+            return [], info
+        return super().run(info)
+
+class MediabunnyVideoOnlyPP(_MediabunnyPP):
+
+    def __init__(self, downloader=None, preferedformat=None):
+        super().__init__(downloader)
+        self._format = preferedformat
+
+    def run(self, info):
+        if not _has_track(self, info, 'audio'):
+            return [], info
+        path = info['filepath']
+        name = self.store._key(path)
+        ext = self._format or info['ext']
+        if not self.bridge.supports(ext):
+            ext = 'mkv'  # takes any codec
+        target = f'{path.rsplit(".", 1)[0]}.{ext}'
+        source = {'name': name, 'video': True, 'audio': False}
+
+        self.to_screen(f'Removing the audio track from "{path}"')
+        label = 'Removing the audio track'
+        if target == path:
+            temp = f'{name}.video'
+            self._mux(info, [source], temp, ext, self._maybe_tags(info), label=label)
+            self.store.remove(name)
+            self.store.rename(temp, name)
+            return [], info
+        self._mux(info, [source], target, ext, self._maybe_tags(info), label=label)
+        info['filepath'] = target
+        info['ext'] = ext
+        return [path], info
+
 class MediabunnyVideoRemuxerPP(_MediabunnyPP):
 
     def __init__(self, downloader=None, preferedformat=None):
@@ -878,9 +929,10 @@ def list_formats():
         })
     return json.dumps(formats)
 
-def download(fmt=None, output=None):
+def download(fmt=None, output=None, only=None):
     """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
-    `output` is the container extension to end up with; empty keeps whatever yt-dlp picks"""
+    `output` is the container extension to end up with; empty keeps whatever yt-dlp picks.
+    `only` is "audio" or "video" to drop the other track if the downloaded format has both"""
     # the worker deletes the store dir after each download, so get a fresh handle
     dir_store._dir = OPFSStore.open(STORE_DIR)._dir
     opts = dict(ydl_opts)
@@ -891,6 +943,11 @@ def download(fmt=None, output=None):
         opts["merge_output_format"] = output
     ydl = BrowserYDL(opts)
     # added directly: yt-dlp's postprocessor registry still maps the FFmpeg keys to the FFmpeg classes
+    if only == "audio" and not audio_codec:  # converting to an audio format drops the video anyway
+        ydl.add_post_processor(MediabunnyAudioOnlyPP(ydl), when="post_process")
+    elif only == "video":
+        # straight into `output`, so the remuxer below finds nothing left to do
+        ydl.add_post_processor(MediabunnyVideoOnlyPP(ydl, preferedformat=output), when="post_process")
     if audio_codec:
         ydl.add_post_processor(MediabunnyExtractAudioPP(ydl, preferredcodec=audio_codec), when="post_process")
     elif output:

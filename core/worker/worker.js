@@ -197,7 +197,7 @@ async function listFormats() {
     return JSON.parse(await pyodide.runPythonAsync("list_formats()"));
 }
 
-async function runDownload(format, output) {
+async function runDownload(format, output, only) {
     await setupPython();
     await readPage();
     const root = await navigator.storage.getDirectory();
@@ -207,8 +207,9 @@ async function runDownload(format, output) {
     await root.removeEntry(STORE_DIR, { recursive: true }).catch(() => {});
     pyodide.globals.set("_web_format", format || "");
     pyodide.globals.set("_web_output", output || "");
+    pyodide.globals.set("_web_only", only || "");
     set_status("Extracting video info from this page…");
-    await pyodide.runPythonAsync("download(_web_format, _web_output)");
+    await pyodide.runPythonAsync("download(_web_format, _web_output, _web_only)");
     const store = await root.getDirectoryHandle(STORE_DIR);
     const saved = [];
     for await (const [name, handle] of store.entries()) {
@@ -225,8 +226,8 @@ worker.handle("formats", async () => {
     return await listFormats();
 });
 
-worker.handle("start", async ({ format, output } = {}) => {
-    return await runDownload(format, output);
+worker.handle("start", async ({ format, output, only } = {}) => {
+    return await runDownload(format, output, only);
 });
 
 async function main() {
