@@ -78,12 +78,12 @@
             color: #aaa;
         }
         #formats label span { width: 48px; flex: none; }
-        #output-warning {
+        #output-warning, #memory-note {
             display: none;
             color: #f0b43c;
             font-size: 12px;
         }
-        #output-warning.active { display: block; }
+        #output-warning.active, #memory-note.active { display: block; }
         #formats select {
             flex: 1;
             min-width: 0;
@@ -134,6 +134,7 @@
         <div id="progress-wrap">
             <progress id="progress" max="1" value="0"></progress>
         </div>
+        <div id="memory-note">Firefox private window detected: downloads are kept in memory until they're saved, so very large videos may fail.</div>
         <div id="formats">
             <label><span>Video</span>
                 <select id="video-format" disabled>

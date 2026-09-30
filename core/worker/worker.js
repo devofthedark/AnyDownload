@@ -5,6 +5,7 @@ importScripts(
     "/libs/mediabunny/mediabunny-aac-encoder.js",
     "/libs/mediabunny/mediabunny-flac-encoder.js",
     "/libs/mediabunny/mediabunny-mp3-encoder.js",
+    "/core/worker/memory-fs.js",
     "/core/worker/mediabunny-merge.js"
 )
 const worker = createNode("worker");
@@ -99,6 +100,25 @@ async function progress_hook(d) {
 
 let pyodide;
 
+// Downloads are stored in the Origin Private File System, except where the browser has none: Firefox's
+// private windows throw a SecurityError there, so those keep them in memory instead (see memory-fs.js).
+const storage = (async () => {
+    try {
+        const root = await navigator.storage.getDirectory();
+        // dl.py writes through these
+        if (!('createSyncAccessHandle' in FileSystemFileHandle.prototype)) throw new Error('no sync access handles');
+        return { root, inMemory: false };
+    } catch (e) {
+        console.warn('OPFS is unavailable, keeping downloads in memory instead', e);
+        return { root: createMemoryRoot(), inMemory: true };
+    }
+})();
+
+// the directory downloads are stored under; python calls this too
+async function storage_root() {
+    return (await storage).root;
+}
+
 // Each panel downloads into its own OPFS directory, so panels open in different tabs can't delete
 // or save each other's files. A panel holds a Web Lock named after its directory for as long as it's
 // open (the lock goes when the worker does), which tells a closed panel's leftovers from a live one's.
@@ -116,7 +136,7 @@ const storeLocked = new Promise((granted) => {
 // Delete the directories of panels that have since closed (and the one all panels used to share)
 async function removeStaleStores() {
     const held = new Set((await navigator.locks.query()).held.map((lock) => lock.name));
-    const root = await navigator.storage.getDirectory();
+    const root = await storage_root();
     const stale = [];
     for await (const [name, handle] of root.entries()) {
         if (handle.kind === 'directory' && name.startsWith(STORE_PREFIX) && !held.has(name)) stale.push(name);
@@ -135,6 +155,7 @@ function muxLabel(label, reencoding) {
 }
 
 const merger = createMerger(STORE_DIR, {
+    getRoot: storage_root,
     onProgress: ({ jobId, label, reencoding, progress }) =>
         worker.notify('iframe', 'muxProgress', { jobId, label: muxLabel(label || 'Merging', reencoding), progress }),
 });
@@ -200,26 +221,32 @@ async function listFormats() {
 async function runDownload(format, output, only) {
     await setupPython();
     await readPage();
-    const root = await navigator.storage.getDirectory();
+    const { root, inMemory } = await storage;
     // Clear out the previous download's files here rather than right after handing them
     // off: the browser reads the blob lazily, so deleting the OPFS file too early can
     // cut the saved file short. dl.py's download() recreates the directory.
     await root.removeEntry(STORE_DIR, { recursive: true }).catch(() => {});
-    pyodide.globals.set("_web_format", format || "");
-    pyodide.globals.set("_web_output", output || "");
-    pyodide.globals.set("_web_only", only || "");
-    set_status("Extracting video info from this page…");
-    await pyodide.runPythonAsync("download(_web_format, _web_output, _web_only)");
-    const store = await root.getDirectoryHandle(STORE_DIR);
-    const saved = [];
-    for await (const [name, handle] of store.entries()) {
-        if (handle.kind !== 'file') continue;
-        set_status(`Saving ${name}…`);
-        const file = await handle.getFile();
-        await worker.call('iframe', 'dl', {file: file, name:name});
-        saved.push(name);
+    try {
+        pyodide.globals.set("_web_format", format || "");
+        pyodide.globals.set("_web_output", output || "");
+        pyodide.globals.set("_web_only", only || "");
+        set_status("Extracting video info from this page…");
+        await pyodide.runPythonAsync("download(_web_format, _web_output, _web_only)");
+        const store = await root.getDirectoryHandle(STORE_DIR);
+        const saved = [];
+        for await (const [name, handle] of store.entries()) {
+            if (handle.kind !== 'file') continue;
+            set_status(`Saving ${name}…`);
+            const file = await handle.getFile();
+            await worker.call('iframe', 'dl', {file: file, name:name});
+            saved.push(name);
+        }
+        return saved;
+    } finally {
+        // In memory nothing is read lazily: the files the panel was handed hold their own data. So
+        // free it now rather than keeping the last download in memory until the next one.
+        if (inMemory) await root.removeEntry(STORE_DIR, { recursive: true }).catch(() => {});
     }
-    return saved;
 }
 
 worker.handle("formats", async () => {
@@ -233,6 +260,6 @@ worker.handle("start", async ({ format, output, only } = {}) => {
 async function main() {
     await prepare();
     set_status("Checking which output formats this browser can encode…");
-    worker.notify('iframe', 'ready', { outputs: await outputFormats() });
+    worker.notify('iframe', 'ready', { outputs: await outputFormats(), inMemory: (await storage).inMemory });
 }
 main();
