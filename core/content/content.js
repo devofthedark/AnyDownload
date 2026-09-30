@@ -11,12 +11,13 @@ const port = chrome.runtime.connect();
 content.connect("sw", portLink(port));
 content.connect("potoken", windowLink(window, location.origin))
 content.handle("proxyfetch", async (request, { transfer }) => {
-    let { method, url, body, headers, credentials } = request;
+    let { method, url, body, headers, credentials, referrer } = request;
     const response = await fetch(url, {
         method: method,
         headers: headers,
         body: body === null ? undefined : body,
-        credentials: credentials
+        credentials: credentials,
+        referrer: referrer
     })
     await content.waitForLink("worker");
     await content.waitForDirect("worker");
