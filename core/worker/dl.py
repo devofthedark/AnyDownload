@@ -47,6 +47,7 @@ class FetchStream:
 
 
 from yt_dlp.networking.common import RequestHandler, Response, Request, register_rh
+from yt_dlp.networking.exceptions import HTTPError, TransportError
 
 @register_rh
 class FetchRH(RequestHandler):
@@ -63,7 +64,10 @@ class FetchRH(RequestHandler):
         w_credentials = False
         NO_SET_HEADERS = ["accept-encoding", "cookie", "cookie2", "origin", "referer", "sec-fetch-mode", "user-agent"]
         COOKIE_INDICATOR_HEADERS = ["cookie", "cookie2"]
-        PROXY_INDICATOR_HEADERS = ["origin"]
+        # fetch can't set Origin or Referer, so requests that need them are sent from the page instead,
+        # which gives them the page's. Some CDNs (e.g. bilibili's) refuse requests without a Referer.
+        PROXY_INDICATOR_HEADERS = ["origin", "referer"]
+        referrer = None
         for k, v in request.headers.items():
             if k.lower() not in NO_SET_HEADERS:
                 new_headers[k] = v
@@ -71,6 +75,8 @@ class FetchRH(RequestHandler):
                 w_credentials = True
             if k.lower() in PROXY_INDICATOR_HEADERS:
                 proxy = True
+            if k.lower() == "referer":
+                referrer = v
         # normalize request.data to just bytes or None (js will deal with none just fine)
         js_compat_body = request.data
         if isinstance(js_compat_body, bytearray | memoryview):
@@ -85,19 +91,31 @@ class FetchRH(RequestHandler):
             "body": js_compat_body,
             "credentials": "include" if w_credentials else "omit"
         }
+        if referrer:
+            # only honoured when it's on the page's origin, otherwise the page's URL is used
+            js_compat_request["referrer"] = referrer
         js.console.debug("Sending HTTP request:", js_compat_request, "proxy", proxy)
 
 
-        response = run_sync(js.python_fetch(to_js(js_compat_request, dict_converter=js.Object.fromEntries), proxy))
+        try:
+            response = run_sync(js.python_fetch(to_js(js_compat_request, dict_converter=js.Object.fromEntries), proxy))
+        except Exception as e:
+            # network failure, CORS rejection, etc. yt-dlp retries on TransportError
+            raise TransportError(cause=e) from e
         r_headers = {}
         for k, v in response.headers:
             r_headers[k] = v
-        return Response(
-            fp = FetchStream(response.stream.getReader()),
+        res = Response(
+            # no body for e.g. HEAD requests
+            fp = FetchStream(response.stream.getReader()) if response.stream else io.BytesIO(),
             url = request.url,
             headers = r_headers,
             status = response.status
         )
+        # like yt-dlp's own handlers: without this an error page gets saved as the video
+        if not 200 <= res.status < 300:
+            raise HTTPError(res)
+        return res
 
 # JS Challenge
 
@@ -332,7 +350,7 @@ class OPFSStore:
         # https://caniuse.com/mdn-api_filesystemhandle_move
         # keep a lookout for any changes
 
-        self._file_handle(self._key(src), create=False).move(self._key(dst))
+        run_sync(self._file_handle(self._key(src), create=False).move(self._key(dst)))
 
     def remove(self, path):
         run_sync(self._dir.removeEntry(self._key(path)))
