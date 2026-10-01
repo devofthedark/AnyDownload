@@ -1,0 +1,99 @@
+// Builds the store packages:
+//   dist/chrome/, dist/firefox/                 unpacked builds, for loading into the browser to test
+//   dist/anydownload-<version>-<browser>.zip    what gets uploaded to each store
+// manifest.json in the repo works unpacked in both browsers; each build gets a copy trimmed to
+// the keys its browser understands, so the store linters don't flag the other browser's keys.
+//
+// Usage: npm run package   (needs `zip` on the PATH, and libs/ from `npm install`)
+
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+
+const ROOT = path.join(import.meta.dirname, '..');
+const DIST = path.join(ROOT, 'dist');
+// everything the extension loads at runtime; the rest of the repo is build tooling
+const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs'];
+const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
+// zip stores timestamps, so give every file the same one to make rebuilds byte-identical
+const MTIME = new Date('2020-01-01T00:00:00Z');
+
+const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+const TARGETS = {
+    chrome(manifest) {
+        delete manifest.browser_specific_settings;
+        manifest.background = { service_worker: manifest.background.service_worker };
+    },
+    firefox(manifest) {
+        // Firefox runs background.scripts as an event page and ignores service_worker
+        manifest.background = { scripts: manifest.background.scripts };
+    },
+};
+
+// libs/ is generated, so make sure it was built from the pins currently in the repo
+function checkLibs() {
+    const vendorFile = path.join(ROOT, 'libs', 'vendor.js');
+    if (!fs.existsSync(vendorFile)) throw new Error('libs/ is missing. Run `npm install` first.');
+    const { versions } = JSON.parse(fs.readFileSync(vendorFile, 'utf8').replace(/^[^]*?self\.VENDOR = /, '').replace(/;\s*$/, ''));
+    const wanted = { ...readJson(path.join(ROOT, 'package.json')).dependencies };
+    for (const line of fs.readFileSync(path.join(ROOT, 'requirements.txt'), 'utf8').split('\n')) {
+        const m = /^([A-Za-z0-9._-]+)\s*==\s*([^\s;#]+)/.exec(line);
+        if (m) wanted[m[1]] = m[2];
+    }
+    for (const [name, version] of Object.entries(wanted)) {
+        if (versions[name] !== version) {
+            throw new Error(`libs/ has ${name} ${versions[name] ?? '(missing)'} but ${version} is pinned. Run \`npm run vendor\`.`);
+        }
+    }
+}
+
+// copies `rel` from the repo into `dir`, returning the files copied as zip paths
+function copy(rel, dir) {
+    const from = path.join(ROOT, rel);
+    if (fs.statSync(from).isDirectory()) {
+        return fs.readdirSync(from)
+            .filter((name) => !JUNK.has(name))
+            .flatMap((name) => copy(path.join(rel, name), dir));
+    }
+    const to = path.join(dir, rel);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    fs.copyFileSync(from, to);
+    fs.utimesSync(to, MTIME, MTIME);
+    return [rel.split(path.sep).join('/')];
+}
+
+function zip(dir, files, out) {
+    try {
+        // -X: no OS-specific extra fields, -D: no directory entries, -@: file list from stdin
+        execFileSync('zip', ['-q', '-X', '-D', '-9', out, '-@'], {
+            cwd: dir,
+            input: files.join('\n'),
+            // zip stores local time, so pin the zone or the timestamps depend on where it's built
+            env: { ...process.env, TZ: 'UTC' },
+            stdio: ['pipe', 'inherit', 'inherit'],
+        });
+    } catch (e) {
+        if (e.code === 'ENOENT') throw new Error('`zip` was not found. Install it and make sure it is on your PATH.');
+        throw e;
+    }
+}
+
+checkLibs();
+const base = readJson(path.join(ROOT, 'manifest.json'));
+fs.rmSync(DIST, { recursive: true, force: true });
+
+for (const [target, adapt] of Object.entries(TARGETS)) {
+    const dir = path.join(DIST, target);
+    const files = FILES.flatMap((rel) => copy(rel, dir));
+
+    const manifest = structuredClone(base);
+    adapt(manifest);
+    fs.writeFileSync(path.join(dir, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
+    fs.utimesSync(path.join(dir, 'manifest.json'), MTIME, MTIME);
+    files.push('manifest.json');
+
+    const out = path.join(DIST, `anydownload-${base.version}-${target}.zip`);
+    zip(dir, files.sort(), out);
+    console.log(`${target}: ${path.relative(ROOT, out)} (${(fs.statSync(out).size / 1024 / 1024).toFixed(1)} MB, ${files.length} files)`);
+}
