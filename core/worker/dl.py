@@ -39,11 +39,17 @@ class FetchStream:
         return out
 
     def close(self):
-        try:
-            run_sync(self._reader.cancel())
-        except Exception:
-            pass
-        self.closed = True
+        # Don't wait for the cancel: yt-dlp's Response closes this from IOBase.__del__, so it runs whenever
+        # Python happens to garbage collect, e.g. while JS has called into Python synchronously. run_sync
+        # can't suspend there, and the SuspendError it can throw isn't a Python exception, so it escaped
+        # the except below and left the download hanging.
+        # The catch keeps a stream that already errored from being reported as an unhandled rejection.
+        if not self.closed:
+            self.closed = True
+            try:
+                self._reader.cancel().catch(lambda _: None)
+            except Exception:
+                pass
 
 
 from yt_dlp.networking.common import RequestHandler, Response, Request, register_rh
