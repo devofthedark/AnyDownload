@@ -3,7 +3,7 @@
 
 <head>
   <meta http-equiv="Content-Security-Policy"
-    content="script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh;" />
+    content="script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:;" />
   <script src="/rpc.js"></script>
   <script type="module">
     const sandbox = createNode("sandbox");
@@ -18,7 +18,6 @@
     });
     sandbox.handle("jsc", async (params, { signal }) => {
       console.debug("[Sandbox] got JS challenge solve request");
-      let code = params.code;
       const logs = [];
       let url;
       try {
@@ -32,8 +31,7 @@
         console.error = log;
 
 
-        code = code.replaceAll("await import('npm:", "await import('https://esm.sh/");
-        const blob = new Blob([code], { type: "text/javascript" });
+        const blob = new Blob([params.code], { type: "text/javascript" });
         url = URL.createObjectURL(blob);
         await import(url);
       } finally {
