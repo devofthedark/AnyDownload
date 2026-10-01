@@ -1,40 +1,41 @@
 {
-  "$schema": "https://json.schemastore.org/chrome-manifest.json",
   "browser_specific_settings": {
     "gecko": {
-      "id": "AnyDownload@devofthedark.ca"
+      "id": "AnyDownload@devofthedark.ca",
+      "strict_min_version": "154.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    },
+    "gecko_android": {
+      "strict_min_version": "154.0"
     }
   },
   "manifest_version": 3,
   "name": "AnyDownload",
-  "description": "yt-dlp, the most powerful web video downloader, now fully embedded in your browser.",
-  "version": "1.2.0",
+  "description": "Download videos from anywhere you can name with the power of yt-dlp, now fully in the browser.",
+  "version": "1.0.0",
   "action": {
     "default_title": "AnyDownload: click to download current page"
   },
   "permissions": [
     "scripting",
     "cookies",
-    "storage",
-    "downloads"
+    "storage"
   ],
   "host_permissions": [
     "*://*/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'; worker-src 'self';",
-    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob: https://esm.sh;"
+    "sandbox": "sandbox allow-scripts; script-src 'self' 'unsafe-eval' 'unsafe-inline' blob:;"
   },
   "web_accessible_resources": [
     {
       "resources": [
-        "core/content/*",
-        "logo/*",
         "core/iframe/*",
         "core/sandbox/*",
-        "core/worker/*",
-        "/rpc.js",
-        "/libs/*"
+        "rpc.js"
       ],
       "matches": [
         "<all_urls>"
