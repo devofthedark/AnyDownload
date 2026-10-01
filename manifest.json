@@ -46,7 +46,10 @@
     "scripts": ["rpc.js", "background.js"]
   },
   "icons": {
-    "128":  "logo/logo-128.png"
+    "128":  "logo/icon128.png",
+    "48": "logo/icon48.png",
+    "32": "logo/icon32.png",
+    "16": "logo/icon16.png"
   },
   "sandbox": {
     "pages": ["core/sandbox/sandbox.html"]
