@@ -11,6 +11,8 @@ and audio in full quality.
 
 ## Building
 
+To install the necessary dependencies, run
+
 ```sh
 npm ci
 ```
