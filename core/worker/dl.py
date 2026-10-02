@@ -7,9 +7,11 @@ from collections.abc import Iterable
 def _opts(**kw):
     return to_js(kw, dict_converter=js.Object.fromEntries)
 
-def _has(fmt, key) -> bool:
-    codec = fmt.get(key)
-    return codec is not None and codec != 'none'
+def _may_have(fmt, key) -> bool:
+    """Whether a format may carry the track its `key` ("vcodec"/"acodec") describes. Only "none" rules
+    one out: like yt-dlp's own merger, an unknown codec still counts, as plenty of formats don't report
+    one (e.g. HLS audio renditions never get an acodec)"""
+    return fmt.get(key) != 'none'
 
 class FetchStream:
     """File-like over a fetch `ReadableStream`. Only .read/.close are needed."""
@@ -632,8 +634,8 @@ class MediabunnyMergerPP(_MediabunnyPP):
             path = fmt.get("filepath") or fallback
             sources.append({
                 'name': self.store._key(path),
-                'video': _has(fmt, "vcodec"),
-                'audio': _has(fmt, "acodec")
+                'video': _may_have(fmt, "vcodec"),
+                'audio': _may_have(fmt, "acodec")
             })
         target = info['filepath']
         self.to_screen(f'merging formats into "{target}"')
@@ -888,7 +890,7 @@ class BrowserYDL(yt_dlp.YoutubeDL):
 
 def _stream_label(info):
     """Which part of the download this is, when yt-dlp is fetching video and audio separately"""
-    video, audio = _has(info, 'vcodec'), _has(info, 'acodec')
+    video, audio = _may_have(info, 'vcodec'), _may_have(info, 'acodec')
     if video and not audio:
         return f'video stream ({info["height"]}p)' if info.get('height') else 'video stream'
     if audio and not video:
@@ -907,6 +909,8 @@ ydl_opts = {
     "external_downloader": {'dash': 'native', 'm3u8': 'native'},
     "postprocessors": [],
     "_no_ytdl_file": True,
+    # a video opened from a playlist (e.g. YouTube's watch?v=...&list=...) is the video, not the playlist
+    "noplaylist": True,
     "cookiefile": "/cookies.txt", # the page's cookies, written by the worker before each call below
     "extractor_args": {"youtube": {"player_client": ["visionos"]}}, # see the visionos notes above
     "progress_hooks": [progress_hook]
@@ -915,10 +919,14 @@ ydl_opts = {
 # This file is only run once per session; the functions below are called by the worker
 
 def list_formats():
-    """Extract the current page and return its formats as JSON for the UI"""
+    """Extract the current page and return its formats as JSON for the UI. A playlist page has no
+    formats of its own, so its entries are only listed, not extracted, and just their count is returned"""
     import json
-    with BrowserYDL(ydl_opts) as ydl:
+    with BrowserYDL(ydl_opts | {"extract_flat": "in_playlist"}) as ydl:
         info = ydl.extract_info(run_sync(js.cur_url()), download=False, process=True)
+    if info.get("_type") == "playlist":
+        count = info.get("playlist_count") or len(info.get("entries") or [])
+        return json.dumps({"formats": [], "playlist": {"title": info.get("title"), "count": count}})
     formats = []
     for fmt in info.get("formats") or []:
         formats.append({
@@ -933,7 +941,7 @@ def list_formats():
             "filesize": fmt.get("filesize") or fmt.get("filesize_approx"),
             "note": fmt.get("format_note"),
         })
-    return json.dumps(formats)
+    return json.dumps({"formats": formats, "playlist": None})
 
 def download(fmt=None, output=None, only=None):
     """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
