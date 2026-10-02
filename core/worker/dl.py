@@ -101,7 +101,7 @@ class FetchRH(RequestHandler):
         if referrer:
             # only honoured when it's on the page's origin, otherwise the page's URL is used
             js_compat_request["referrer"] = referrer
-        js.console.debug("Sending HTTP request:", js_compat_request, "proxy", proxy)
+        # js.console.debug("Sending HTTP request:", js_compat_request, "proxy", proxy)
 
 
         try:
@@ -901,7 +901,6 @@ def progress_hook(d):
 
 
 ydl_opts = {
-    "verbose": True,
     "paths": {"home": OPFS_PREFIX},
     "progress_with_newline": True,
     "hls_prefer_native": True,
