@@ -22,6 +22,13 @@ function literalAt(src, start) {
     throw new Error('unterminated string literal');
 }
 
+// the codec library compiled into each worker, credited in the worker's header
+const ENCODER_LIBS = {
+    mp3: 'the LAME MP3 encoder (https://lame.sourceforge.io/), licensed under the GNU LGPL 2.0 or later',
+    aac: "FFmpeg's AAC encoder (https://ffmpeg.org/), licensed under the GNU LGPL 2.1 or later",
+    flac: 'libFLAC (https://xiph.org/flac/), licensed under the BSD 3-Clause License',
+};
+
 // dir: where mediabunny-<codec>-encoder.js lives on disk; urlPrefix: the same dir as the extension serves it
 export function unblobEncoderWorkers(dir, urlPrefix) {
     for (const codec of ['mp3', 'aac', 'flac']) {
@@ -47,7 +54,11 @@ export function unblobEncoderWorkers(dir, urlPrefix) {
         if (!callEnd) throw new Error(`${codec}: unexpected call shape`);
         const workerSrc = vm.runInNewContext(literal);
 
-        fs.writeFileSync(path.join(dir, workerName), workerSrc);
+        // The worker is cut out of an MPL-2.0 file, so it keeps that file's license header
+        const header = /^\/\*![^]*?\*\//.exec(src);
+        if (!header) throw new Error(`${codec}: no license header to copy to the worker`);
+        const notice = `/*!\n * Contains a WebAssembly build of ${ENCODER_LIBS[codec]}.\n * See THIRD_PARTY_LICENSES.txt.\n */`;
+        fs.writeFileSync(path.join(dir, workerName), `${header[0]}\n${notice}\n${workerSrc}`);
         src = src.slice(0, call.index) + staticCall + src.slice(litStart + literal.length + callEnd[0].length);
         fs.writeFileSync(libFile, src);
         console.log(`${codec}: split out ${workerName} (${workerSrc.length} bytes)`);

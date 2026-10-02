@@ -9,6 +9,7 @@ if (typeof importScripts === "function") {
 }
 
 // From https://github.com/kairi003/Get-cookies.txt-LOCALLY/blob/master/src/modules/cookie_format.mjs
+// (MIT License, see THIRD_PARTY_LICENSES.txt)
 function jsonToNetscapeMapper(cookies) {
     return cookies.map(
         ({ domain, expirationDate, path, secure, name, value }) => {
