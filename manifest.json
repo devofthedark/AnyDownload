@@ -1,7 +1,7 @@
 {
   "browser_specific_settings": {
     "gecko": {
-      "id": "AnyDownload@devofthedark.ca",
+      "id": "yt-dlp-web@devofthedark.ca",
       "strict_min_version": "154.0",
       "data_collection_permissions": {
         "required": ["none"]
