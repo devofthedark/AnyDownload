@@ -31,6 +31,16 @@
             touch-action: none;
         }
         header.dragging { cursor: grabbing; }
+        header .title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        header img {
+            width: 18px;
+            height: 18px;
+            display: block;
+        }
         header h1 {
             font-size: 13px;
             margin: 0;
@@ -126,7 +136,10 @@
 </head>
 <body>
     <header>
-        <h1>AnyDownload</h1>
+        <div class="title">
+            <img src="/logo/icon.svg" alt="" draggable="false">
+            <h1>AnyDownload</h1>
+        </div>
         <button id="close" title="Close">✕</button>
     </header>
     <main>
