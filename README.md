@@ -6,6 +6,9 @@ now fully in the browser.
 No external servers. No installing a companion app on your computer. Just click download and it downloads the video
 and audio in full quality.
 
+> [!NOTE]
+> This project is not affiliated with the [yt-dlp](https://github.com/yt-dlp/yt-dlp) project. It is an independent project.
+
 ## Building
 
 ```sh
