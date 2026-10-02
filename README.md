@@ -1,4 +1,10 @@
-WIP
+# AnyDownload
+
+Download videos from anywhere you can name with the power of [yt-dlp](https://github.com/yt-dlp/yt-dlp), 
+now fully in the browser.
+
+No external servers. No installing a companion app on your computer. Just click download and it downloads the video
+and audio in full quality.
 
 ## Building
 

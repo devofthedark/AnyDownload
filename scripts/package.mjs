@@ -13,7 +13,7 @@ import path from 'node:path';
 const ROOT = path.join(import.meta.dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 // everything the extension loads at runtime; the rest of the repo is build tooling
-const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs'];
+const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs', 'THIRD_PARTY_LICENSES.txt'];
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 // zip stores timestamps, so give every file the same one to make rebuilds byte-identical
 const MTIME = new Date('2020-01-01T00:00:00Z');
@@ -46,6 +46,14 @@ function checkLibs() {
             throw new Error(`libs/ has ${name} ${versions[name] ?? '(missing)'} but ${version} is pinned. Run \`npm run vendor\`.`);
         }
     }
+    return versions;
+}
+
+// every vendored library has to be credited in THIRD_PARTY_LICENSES.txt before it ships
+function checkLicenses(vendored) {
+    const notices = fs.readFileSync(path.join(ROOT, 'THIRD_PARTY_LICENSES.txt'), 'utf8').toLowerCase();
+    const missing = Object.keys(vendored).filter((name) => !notices.includes(name.toLowerCase()));
+    if (missing.length) throw new Error(`THIRD_PARTY_LICENSES.txt doesn't mention ${missing.join(', ')}. Add their licenses to it.`);
 }
 
 // copies `rel` from the repo into `dir`, returning the files copied as zip paths
@@ -79,7 +87,7 @@ function zip(dir, files, out) {
     }
 }
 
-checkLibs();
+checkLicenses(checkLibs());
 const base = readJson(path.join(ROOT, 'manifest.json'));
 fs.rmSync(DIST, { recursive: true, force: true });
 
