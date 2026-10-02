@@ -13,6 +13,7 @@ const loadFormatsBtn = document.getElementById('load-formats');
 const outputSel = document.getElementById('output-format');
 const outputWarning = document.getElementById('output-warning');
 const memoryNote = document.getElementById('memory-note');
+document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
 const NS = 'ytx';
 iframeNode.handle("dl", async (params, {signal}) => {
     console.debug("dl file");
