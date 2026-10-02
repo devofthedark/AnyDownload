@@ -56,6 +56,7 @@ chrome.action.onClicked.addListener(async (tab) => {
 // token rather than leaving an RPC node there: anything in the MAIN world is reachable by the page.
 async function mintPotokenInPage({ content_binding, mint_cold_start_token, mint_error_token }) {
     try {
+        // The youtube token minter location.
         const token = await window["havuokmhhs-0"]?.bevasrs?.wpc().then((client) => client.mws({
             c: content_binding,
             mc: mint_cold_start_token,

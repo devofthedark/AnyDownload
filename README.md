@@ -9,10 +9,10 @@ and audio in full quality.
 ## Building
 
 ```sh
-npm install
+npm ci
 ```
 
-To build the store packages:
+To build the store packages (needs `zip` installed on PATH):
 
 ```sh
 npm run package
@@ -20,3 +20,7 @@ npm run package
 
 This writes `dist/anydownload-<version>-chrome.zip` and `dist/anydownload-<version>-firefox.zip`, plus unpacked
 copies in `dist/chrome/` and `dist/firefox/` for loading into the browser.
+
+## Credits
+
+The logo is a modified version of the "world-download" icon from [Tabler Icons](https://tabler.io/icons).
