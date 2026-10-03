@@ -182,7 +182,11 @@ async function outputFormats() {
 
 async function prepare() {
     set_status("Connecting to the page…");
-    await worker.waitForLink("content");
+    // the panel hands the channel over as soon as it loads (see iframe.js), so this only times out if
+    // that handshake failed
+    await worker.waitForLink("content", { timeout: 30_000 }).catch(() => {
+        throw new Error("couldn't connect to the page");
+    });
     set_status("Starting Python (Pyodide) and loading yt-dlp…");
     importScripts(
         "/libs/pyodide/pyodide.js"
@@ -262,4 +266,8 @@ async function main() {
     set_status("Checking which output formats this browser can encode…");
     worker.notify('iframe', 'ready', { outputs: await outputFormats(), inMemory: (await storage).inMemory });
 }
-main();
+// without this the panel would wait for "ready" forever
+main().catch((e) => {
+    console.error('the worker failed to start', e);
+    worker.notify('iframe', 'failed', { message: String(e?.message ?? e) });
+});

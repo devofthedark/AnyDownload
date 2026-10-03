@@ -21,13 +21,14 @@
     function createNode(id, { onError = console.error } = {}) {
         console.debug("[RPC]", `Created RPC Node with id "${id}"`);
         const handlers = new Map();  // method -> fn
-        const pending = new Map();   // callId -> {resolve, reject, timer}
+        const pending = new Map();   // callId -> {resolve, reject, timer, via}
         const inflight = new Map();  // callId -> AbortController (server side)
         const links = new Map();     // peerId -> link
         const routes = new Map();    // destId -> peerId to forward through
         let seq = 0;
         
-        const linkFor = (to) => links.get(routes.get(to) ?? to);
+        const peerFor = (to) => routes.get(to) ?? to;
+        const linkFor = (to) => links.get(peerFor(to));
         
         function ship(env, transfer) {
             const link = linkFor(env.to);
@@ -126,10 +127,17 @@
             connect(peerId, link) {
                 links.set(peerId, link);
                 link.listen((env) => receive(env, link));
+                // a link that can tell when its other end goes away takes itself down
+                link.onClose?.(() => {
+                    if (links.get(peerId) === link) this.disconnect(peerId);
+                });
                 return this;
             },
 
-            /** Tear down a neighbour link (removes its listener) and any routes through it. */
+            /**
+             * Tear down a neighbour link (removes its listener) and any routes through it. Calls sent
+             * through it fail, as their replies could only have come back that way.
+             */
             disconnect(peerId) {
                 const link = links.get(peerId);
                 if (!link) return this;
@@ -137,6 +145,12 @@
                 links.delete(peerId);
                 for (const [dest, via] of routes) {
                     if (via === peerId) routes.delete(dest);
+                }
+                for (const [callId, p] of pending) {
+                    if (p.via !== peerId) continue;
+                    pending.delete(callId);
+                    clearTimeout(p.timer);
+                    p.reject(new Error(`[${id}] "${p.method}" -> ${p.to} failed: lost the connection to "${peerId}"`));
                 }
                 return this;
             },
@@ -159,7 +173,7 @@
                     }, timeout)
                     : null;
                     
-                    pending.set(callId, { resolve, reject, timer });
+                    pending.set(callId, { resolve, reject, timer, method, to, via: peerFor(to) });
                     
                     signal?.addEventListener('abort', () => {
                         const p = pending.get(callId);
@@ -186,13 +200,17 @@
                 ship({ ns: NS, v: 1, kind: 'nfy', method, params, from: id, to, hops: 0 }, transfer);
             },
             
-            waitForLink(key, intervalMs = 50) {
-                return new Promise((resolve) => {
+            /** Resolves once neighbour `key` is connected. With a `timeout`, rejects if it isn't by then. */
+            waitForLink(key, { timeout = 0, interval = 50 } = {}) {
+                const deadline = timeout ? Date.now() + timeout : Infinity;
+                return new Promise((resolve, reject) => {
                     const check = () => {
                         if (links.has(key)) {
                             resolve(links.get(key));
+                        } else if (Date.now() >= deadline) {
+                            reject(new Error(`[${id}] no link to "${key}" after ${timeout}ms`));
                         } else {
-                            setTimeout(check, intervalMs);
+                            setTimeout(check, interval);
                         }
                     };
                     check();
@@ -232,6 +250,8 @@
                 handler = fn;
                 port.onMessage.addListener(handler);
             },
+            // the other end went away, e.g. the background was stopped or the tab closed
+            onClose: (fn) => port.onDisconnect.addListener(() => fn()),
             stop: () => {
                 port.onMessage.removeListener(handler);
                 try { port.disconnect(); } catch { /* already gone */ }

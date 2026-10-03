@@ -15,6 +15,9 @@ const outputWarning = document.getElementById('output-warning');
 const memoryNote = document.getElementById('memory-note');
 document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
 const NS = 'ytx';
+// whether the worker has said it's ready, and why it failed for good if it did (see fail())
+let ready = false;
+let failure = null;
 iframeNode.handle("dl", async (params, {signal}) => {
     console.debug("dl file");
     const {name, file} = params;
@@ -109,6 +112,7 @@ outputSel.addEventListener('change', () => {
 videoSel.addEventListener('change', fillOutputs);
 
 iframeNode.handle("ready", async ({ outputs, inMemory } = {}) => {
+    ready = true;
     if (outputs) outputFormats = outputs;
     fillOutputs();
     // the worker has no OPFS here (e.g. a Firefox private window), see memory-fs.js
@@ -179,7 +183,7 @@ function onlyTrack() {
 }
 
 function updateStartEnabled() {
-    startBtn.disabled = videoSel.value === 'none' && audioSel.value === 'none';
+    startBtn.disabled = !!failure || (videoSel.value === 'none' && audioSel.value === 'none');
 }
 videoSel.addEventListener('change', updateStartEnabled);
 audioSel.addEventListener('change', updateStartEnabled);
@@ -204,6 +208,8 @@ loadFormatsBtn.addEventListener('click', async () => {
             statusEl.textContent = 'Ready to download';
         }
     } catch (e) {
+        // after fail() the status already says what went wrong
+        if (failure) return;
         statusEl.textContent = `Error loading formats: ${e.message}`;
         loadFormatsBtn.disabled = false;
     }
@@ -212,6 +218,30 @@ loadFormatsBtn.addEventListener('click', async () => {
 
 let worker = new Worker("/core/worker/worker.js");
 iframeNode.connect("worker", workerLink(worker));
+
+// The worker is gone or never got going, so nothing can be downloaded any more: the controls stay
+// off and the status keeps saying why.
+function fail(message) {
+    if (failure) return;
+    failure = message;
+    // fails the formats/start call still waiting on the worker, if any
+    iframeNode.disconnect('worker');
+    worker.terminate();
+    for (const el of [startBtn, videoSel, audioSel, outputSel, loadFormatsBtn]) el.disabled = true;
+    progressWrap.classList.remove('active');
+    statusEl.textContent = `Error: ${message.replace(/\.$/, '')}. Close this panel and open it again to retry.`;
+}
+// the browser's or Pyodide's own message alone (e.g. "NetworkError") doesn't say what failed
+const startFailed = (why) => fail(why ? `couldn't start the downloader (${why.replace(/\.$/, '')})` : "couldn't start the downloader");
+// the worker caught its own startup failing (see main() in worker.js)
+iframeNode.handle("failed", async ({ message }) => startFailed(message));
+// An error the worker didn't catch. Before it's ready, that means it never got going, e.g. a library
+// failed to load. Once it's ready, calls report their own errors, so this is only logged.
+worker.addEventListener('error', (e) => {
+    if (ready) return;
+    e.preventDefault();
+    startFailed(e.message);
+});
 
 // The content script sends us its end of a private channel (see content.js). The page is our parent
 // window too and can post here as well, so only take a port whose token content stored for us.
@@ -292,6 +322,7 @@ startBtn.addEventListener('click', async () => {
         const saved = await iframeNode.call('worker', 'start', { format: formatSelector(), output, only: onlyTrack() }, { timeout: 0 });
         statusEl.textContent = `Finished, saved ${saved.length} file${saved.length === 1 ? '' : 's'}`;
     } catch (e) {
+        if (failure) return;
         statusEl.textContent = `Error: ${e.message}`;
         startBtn.disabled = false;
         videoSel.disabled = false;

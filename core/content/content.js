@@ -13,10 +13,9 @@ let swPort = null;
 function callSw(method, params) {
     if (!swPort) {
         const port = chrome.runtime.connect();
+        // the "sw" link takes itself down too, failing any call still waiting on it (see rpc.js)
         port.onDisconnect.addListener(() => {
-            if (swPort !== port) return;
-            swPort = null;
-            content.disconnect("sw");
+            if (swPort === port) swPort = null;
         });
         swPort = port;
         content.connect("sw", portLink(port));
