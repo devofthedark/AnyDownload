@@ -36,21 +36,49 @@ function netscapeSerializer(cookies) {
     return text;
 }
 
+// Some pages can't be scripted at all: the browser's own pages, its extension store, file:// URLs
+// without file access, and so on. Rather than doing nothing, the button flags it for a while, with
+// the reason in its tooltip.
+const CANT_RUN_FOR = 8_000;
+async function showCantRun(tabId, error) {
+    const why = String(error?.message ?? error ?? '').replace(/\.$/, '');
+    await Promise.all([
+        chrome.action.setBadgeText({ tabId, text: '!' }),
+        chrome.action.setBadgeBackgroundColor({ tabId, color: '#d93025' }),
+        chrome.action.setTitle({ tabId, title: `AnyDownload can't run on this page${why ? ` (${why})` : ''}` }),
+    ]);
+    setTimeout(() => clearCantRun(tabId), CANT_RUN_FOR);
+}
+function clearCantRun(tabId) {
+    // the tab may be gone by now
+    return Promise.all([
+        chrome.action.setBadgeText({ tabId, text: '' }),
+        chrome.action.setTitle({ tabId, title: chrome.runtime.getManifest().action.default_title }),
+    ]).catch(() => {});
+}
+
 // when the extension icon is clicked
-chrome.action.onClicked.addListener(async (tab) => {
+async function openPanel(tab) {
     // nothing gets downloaded until the terms have been accepted
     const { agree } = await chrome.storage.local.get({ agree: false });
     if (!agree) {
         chrome.tabs.create({ url: chrome.runtime.getURL("/pages/agreement/index.html") });
         return;
     }
-    await chrome.scripting.executeScript({
-        target: { tabId: tab.id },
-        files: ["/rpc.js", "/core/content/content.js"],
-        injectImmediately: true,
-        world: "ISOLATED"
-    });
-});
+    try {
+        await chrome.scripting.executeScript({
+            target: { tabId: tab.id },
+            files: ["/rpc.js", "/core/content/content.js"],
+            injectImmediately: true,
+            world: "ISOLATED"
+        });
+        await clearCantRun(tab.id);
+    } catch (e) {
+        console.warn(`can't open the panel in tab ${tab.id}`, e);
+        await showCantRun(tab.id, e);
+    }
+}
+chrome.action.onClicked.addListener(openPanel);
 
 // Runs in the page's MAIN world, where YouTube's player keeps its PO token minter. Injected once per
 // token rather than leaving an RPC node there: anything in the MAIN world is reachable by the page.

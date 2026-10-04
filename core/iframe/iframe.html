@@ -66,7 +66,7 @@
             overflow-y: auto;
         }
         #status { color: #aaa; }
-        #start {
+        #start, #cancel {
             background: #3b82f6;
             color: #fff;
             border: none;
@@ -75,7 +75,9 @@
             font-size: 13px;
             cursor: pointer;
         }
-        #start:disabled { opacity: .5; cursor: default; }
+        #cancel { background: #3a3b3f; color: #e8e8ea; }
+        #cancel:hover:not(:disabled) { background: #46474c; }
+        #start:disabled, #cancel:disabled { opacity: .5; cursor: default; }
         #formats {
             display: flex;
             flex-direction: column;
@@ -183,6 +185,7 @@
             <button id="load-formats" disabled>Load available formats</button>
         </div>
         <button id="start" disabled>Download</button>
+        <button id="cancel" hidden>Cancel</button>
         <ul id="files"></ul>
     </main>
     <footer>

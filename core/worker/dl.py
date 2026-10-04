@@ -1,8 +1,9 @@
-import contextlib, errno, functools, io, os, re, sys
+import contextlib, errno, functools, io, json, os, re, sys, traceback
 from types import NoneType
 import yt_dlp, js
 from pyodide.ffi import to_js, run_sync, JsException
 from collections.abc import Iterable
+from yt_dlp.utils import DownloadCancelled
 
 def _opts(**kw):
     return to_js(kw, dict_converter=js.Object.fromEntries)
@@ -13,6 +14,12 @@ def _may_have(fmt, key) -> bool:
     one (e.g. HLS audio renditions never get an acodec)"""
     return fmt.get(key) != 'none'
 
+def _check_cancelled():
+    """Stops right here if the panel's Cancel was clicked (see `job` in worker.js). yt-dlp lets
+    DownloadCancelled through everything that would otherwise retry or skip a failed step"""
+    if js.cancelled():
+        raise DownloadCancelled('Cancelled')
+
 class FetchStream:
     """File-like over a fetch `ReadableStream`. Only .read/.close are needed."""
     def __init__(self, js_reader):
@@ -22,7 +29,12 @@ class FetchStream:
         self.closed = False
 
     def _pump(self):
-        chunk = run_sync(self._reader.read())
+        try:
+            # gives up when Cancel is clicked, even if the response has stalled (see read_chunk)
+            chunk = run_sync(js.read_chunk(self._reader))
+        except JsException:
+            _check_cancelled()
+            raise
         if chunk.done:
             self._eof = True
         else:
@@ -69,6 +81,7 @@ class FetchRH(RequestHandler):
         """The browser sends the cookies, not yt-dlp: fetch can't set a Cookie header. It does so only
         for requests to the page's origin, see python_fetch in worker.js. yt-dlp's cookie jar holds
         the same cookies (the cookiefile option) so extractors can see them, but it isn't sent."""
+        _check_cancelled()
         new_headers = {}
         proxy = False
         # see the visionos notes below
@@ -109,6 +122,8 @@ class FetchRH(RequestHandler):
         try:
             response = run_sync(js.python_fetch(to_js(js_compat_request, dict_converter=js.Object.fromEntries), proxy))
         except Exception as e:
+            # cancelling aborts the request, which mustn't look like a failure worth retrying
+            _check_cancelled()
             # network failure, CORS rejection, etc. yt-dlp retries on TransportError
             raise TransportError(cause=e) from e
         r_headers = {}
@@ -116,7 +131,7 @@ class FetchRH(RequestHandler):
             r_headers[k] = v
         res = Response(
             # no body for e.g. HEAD requests
-            fp = FetchStream(response.stream.getReader()) if response.stream else io.BytesIO(),
+            fp = FetchStream(response.reader) if response.reader else io.BytesIO(),
             # where any redirects ended up, like yt-dlp's own handlers report
             url = response.url or request.url,
             headers = r_headers,
@@ -612,6 +627,8 @@ class _MediabunnyPP(PostProcessor):
         try:
             run_sync(bridge.mux(_opts(**payload)))
         except Exception as err:
+            # cancelling stops the mux too (see mediabunny-merge.js)
+            _check_cancelled()
             raise PostProcessingError(str(err)) from err
 
         info['__mb_muxed'] = True
@@ -898,6 +915,7 @@ def _stream_label(info):
     return None
 
 def progress_hook(d):
+    _check_cancelled()
     run_sync(js.progress_hook(d | {'stream': _stream_label(d.get('info_dict') or {})}))
 
 
@@ -919,14 +937,13 @@ ydl_opts = {
 # This file is only run once per session; the functions below are called by the worker
 
 def list_formats():
-    """Extract the current page and return its formats as JSON for the UI. A playlist page has no
-    formats of its own, so its entries are only listed, not extracted, and just their count is returned"""
-    import json
+    """Extract the current page and return its formats for the UI. A playlist page has no formats of
+    its own, so its entries are only listed, not extracted, and just their count is returned"""
     with BrowserYDL(ydl_opts | {"extract_flat": "in_playlist"}) as ydl:
         info = ydl.extract_info(run_sync(js.cur_url()), download=False, process=True)
     if info.get("_type") == "playlist":
         count = info.get("playlist_count") or len(info.get("entries") or [])
-        return json.dumps({"formats": [], "playlist": {"title": info.get("title"), "count": count}})
+        return {"formats": [], "playlist": {"title": info.get("title"), "count": count}}
     formats = []
     for fmt in info.get("formats") or []:
         formats.append({
@@ -941,7 +958,7 @@ def list_formats():
             "filesize": fmt.get("filesize") or fmt.get("filesize_approx"),
             "note": fmt.get("format_note"),
         })
-    return json.dumps({"formats": formats, "playlist": None})
+    return {"formats": formats, "playlist": None}
 
 def download(fmt=None, output=None, only=None):
     """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
@@ -973,3 +990,27 @@ def download(fmt=None, output=None, only=None):
         # a file left open (say the download failed halfway) keeps its lock, and the worker then
         # can't clear the directory before the next download, so its leftovers would get saved too
         dir_store.close_all()
+
+def _error_message(err):
+    """What went wrong, as one line for the panel's status"""
+    # yt-dlp's own errors read "ERROR: [extractor] id: what happened"
+    if isinstance(err, yt_dlp.utils.YoutubeDLError):
+        message = str(err).removeprefix('ERROR: ')
+    else:
+        message = f'{type(err).__name__}: {err}'
+    # yt-dlp's advice to report it on its own tracker and update with `yt-dlp -U` doesn't apply here
+    message = re.split(r'[;.]?\s*please report this issue on\b', message, maxsplit=1, flags=re.IGNORECASE)[0]
+    return _describe(message)
+
+def run_for_worker(name, *args):
+    """Runs list_formats or download for the worker. Pyodide would hand it an exception as a whole
+    traceback, so it gets JSON instead: {"value": ...} or {"error": "<one line for the panel>"}, with
+    the traceback going to the console"""
+    fn = {"list_formats": list_formats, "download": download}[name]
+    try:
+        return json.dumps({"value": fn(*args)})
+    except Exception as err:
+        # cancelling makes whatever was running fail somehow, which is no news (see _check_cancelled)
+        if not js.cancelled():
+            traceback.print_exc()
+        return json.dumps({"error": _error_message(err)})

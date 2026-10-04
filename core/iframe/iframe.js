@@ -3,6 +3,7 @@ const iframeNode = createNode('iframe');
 
 const statusEl = document.getElementById('status');
 const startBtn = document.getElementById('start');
+const cancelBtn = document.getElementById('cancel');
 const progressWrap = document.getElementById('progress-wrap');
 const progressEl = document.getElementById('progress');
 const filesEl = document.getElementById('files');
@@ -117,11 +118,7 @@ iframeNode.handle("ready", async ({ outputs, inMemory } = {}) => {
     fillOutputs();
     // the worker has no OPFS here (e.g. a Firefox private window), see memory-fs.js
     memoryNote.classList.toggle('active', !!inMemory);
-    startBtn.disabled = false;
-    videoSel.disabled = false;
-    audioSel.disabled = false;
-    outputSel.disabled = false;
-    loadFormatsBtn.disabled = false;
+    setBusy(false);
     statusEl.textContent = 'Ready to download';
 });
 
@@ -188,12 +185,50 @@ function updateStartEnabled() {
 videoSel.addEventListener('change', updateStartEnabled);
 audioSel.addEventListener('change', updateStartEnabled);
 
+// formats are only loaded once per panel
+let formatsLoaded = false;
+
+// While the worker loads formats or downloads, the choices are locked and Cancel takes Download's place
+function setBusy(busy) {
+    startBtn.hidden = busy;
+    cancelBtn.hidden = !busy;
+    cancelBtn.disabled = false;
+    cancelBtn.textContent = 'Cancel';
+    for (const el of [videoSel, audioSel, outputSel]) el.disabled = busy;
+    loadFormatsBtn.disabled = busy || formatsLoaded;
+    updateStartEnabled();
+}
+
+// A worker call that can take a while, offering Cancel meanwhile. A cancelled one throws an AbortError.
+async function workerJob(method, params) {
+    setBusy(true);
+    progressWrap.classList.remove('active');
+    try {
+        return await iframeNode.call('worker', method, params, { timeout: 0 });
+    } catch (e) {
+        // the bar would otherwise stay wherever the failed or cancelled job left it
+        progressWrap.classList.remove('active');
+        throw e;
+    } finally {
+        // after fail() everything stays off
+        if (!failure) setBusy(false);
+    }
+}
+const wasCancelled = (e) => e.name === 'AbortError';
+
+// The worker stops at the next point it checks, then the job's call ends with an AbortError
+cancelBtn.addEventListener('click', () => {
+    cancelBtn.disabled = true;
+    cancelBtn.textContent = 'Cancelling…';
+    iframeNode.notify('worker', 'cancel', {});
+});
+
 loadFormatsBtn.addEventListener('click', async () => {
-    loadFormatsBtn.disabled = true;
-    startBtn.disabled = true;
     statusEl.textContent = 'Loading formats…';
     try {
-        const { formats, playlist } = await iframeNode.call('worker', 'formats', {}, { timeout: 0 });
+        const { formats, playlist } = await workerJob('formats', {});
+        formatsLoaded = true;
+        loadFormatsBtn.disabled = true;
         if (playlist) {
             // nothing to pick from: Download saves every entry, with the Best/None choices above
             const videos = `${playlist.count} video${playlist.count === 1 ? '' : 's'}`;
@@ -210,10 +245,8 @@ loadFormatsBtn.addEventListener('click', async () => {
     } catch (e) {
         // after fail() the status already says what went wrong
         if (failure) return;
-        statusEl.textContent = `Error loading formats: ${e.message}`;
-        loadFormatsBtn.disabled = false;
+        statusEl.textContent = wasCancelled(e) ? 'Cancelled' : `Error loading formats: ${e.message}`;
     }
-    updateStartEnabled();
 });
 
 let worker = new Worker("/core/worker/worker.js");
@@ -227,6 +260,8 @@ function fail(message) {
     // fails the formats/start call still waiting on the worker, if any
     iframeNode.disconnect('worker');
     worker.terminate();
+    startBtn.hidden = false;
+    cancelBtn.hidden = true;
     for (const el of [startBtn, videoSel, audioSel, outputSel, loadFormatsBtn]) el.disabled = true;
     progressWrap.classList.remove('active');
     statusEl.textContent = `Error: ${message.replace(/\.$/, '')}. Close this panel and open it again to retry.`;
@@ -310,24 +345,15 @@ const endDrag = () => {
 header.addEventListener('pointerup', endDrag);
 header.addEventListener('pointercancel', endDrag);
 
+// Download stays available afterwards, however it went, to download again or with other choices
 startBtn.addEventListener('click', async () => {
-    startBtn.disabled = true;
-    videoSel.disabled = true;
-    audioSel.disabled = true;
-    outputSel.disabled = true;
-    loadFormatsBtn.disabled = true;
     statusEl.textContent = 'Starting download…';
     const output = outputSel.value === 'default' ? undefined : outputSel.value;
     try {
-        const saved = await iframeNode.call('worker', 'start', { format: formatSelector(), output, only: onlyTrack() }, { timeout: 0 });
+        const saved = await workerJob('start', { format: formatSelector(), output, only: onlyTrack() });
         statusEl.textContent = `Finished, saved ${saved.length} file${saved.length === 1 ? '' : 's'}`;
     } catch (e) {
         if (failure) return;
-        statusEl.textContent = `Error: ${e.message}`;
-        startBtn.disabled = false;
-        videoSel.disabled = false;
-        audioSel.disabled = false;
-        outputSel.disabled = false;
-        loadFormatsBtn.disabled = formatsById.size > 0;
+        statusEl.textContent = wasCancelled(e) ? 'Cancelled' : `Error: ${e.message}`;
     }
 });

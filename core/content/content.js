@@ -24,15 +24,32 @@ function callSw(method, params) {
 }
 // Every link below is a MessagePort or runtime port. Nothing listens on the page's window: the
 // page can read and forge anything posted there.
-content.handle("proxyfetch", async (request, { transfer }) => {
+
+// The requests sent for the worker's current job. The worker cancelling a body it was handed doesn't
+// get back to the request here, which would stay open, so the worker has these aborted when the job
+// is cancelled or over (see "abortFetches"). Watching for the end of each body isn't possible here:
+// Firefox won't let a stream call back into a content script.
+const openFetches = new Set();
+content.handle("proxyfetch", async (request, { transfer, signal }) => {
     let { method, url, body, headers, credentials, referrer } = request;
-    const response = await fetch(url, {
-        method: method,
-        headers: headers,
-        body: body === null ? undefined : body,
-        credentials: credentials,
-        referrer: referrer
-    })
+    const abort = new AbortController();
+    // the call's own signal: Cancel clicked while this still waits for the response
+    signal.addEventListener("abort", () => abort.abort(signal.reason), { once: true });
+    openFetches.add(abort);
+    let response;
+    try {
+        response = await fetch(url, {
+            method: method,
+            headers: headers,
+            body: body === null ? undefined : body,
+            credentials: credentials,
+            referrer: referrer,
+            signal: abort.signal
+        })
+    } catch (e) {
+        openFetches.delete(abort);
+        throw e;
+    }
     await content.waitForLink("worker");
     await content.waitForDirect("worker");
     const stream = response.body;
@@ -40,6 +57,12 @@ content.handle("proxyfetch", async (request, { transfer }) => {
     const entries = []
     response.headers.forEach((value, key) => entries.push([key, value]));
     return { stream, status: response.status, url: response.url, headers: entries }
+});
+// the worker's job was cancelled or is over, see openFetches. Aborting a request whose body has been
+// read already does nothing.
+content.handle("abortFetches", async () => {
+    for (const abort of openFetches) abort.abort(new DOMException("Cancelled", "AbortError"));
+    openFetches.clear();
 });
 content.handle("cur_url", async (params, {signal}) => {
     return location.href

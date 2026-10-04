@@ -37,6 +37,8 @@
         var onProgress = (options || {}).onProgress;
         // where dirName lives: OPFS's root, unless the caller keeps its files elsewhere (see memory-fs.js)
         var getRoot = (options || {}).getRoot || function () { return navigator.storage.getDirectory(); };
+        // an AbortSignal to stop the mux under way when it aborts, if the caller has one
+        var getSignal = (options || {}).getSignal || function () { return null; };
         var extrasRegistered = false;
 
         async function dir() {
@@ -162,11 +164,19 @@
                     }
                 }
 
+                var signal = getSignal();
+                if (signal) signal.throwIfAborted();
+
                 var handle = await dir();
                 var outHandle = await handle.getFileHandle(outputName, { create: true });
                 var writable = await outHandle.createWritable();
                 var output = null;
                 var conversions = [];
+                // cancelling the conversions makes execute() below throw, which abandons the output
+                function stop() {
+                    conversions.forEach(function (c) { c.cancel().catch(function () {}); });
+                }
+                if (signal) signal.addEventListener('abort', stop);
 
                 try {
                     output = new M.Output({
@@ -241,6 +251,8 @@
                         }
                     }
 
+                    // aborted while setting up, when stop() could miss conversions made after it ran
+                    if (signal) signal.throwIfAborted();
                     report(0);
                     await output.start();
 
@@ -256,6 +268,8 @@
                 } catch (err) {
                     await abandon(output, conversions, writable);
                     throw err;
+                } finally {
+                    if (signal) signal.removeEventListener('abort', stop);
                 }
 
                 var written = await (await handle.getFileHandle(outputName)).getFile();
