@@ -260,7 +260,7 @@ async function loadPython() {
     )
     pyodide = await loadPyodide({
         indexURL: "/libs/pyodide",
-        stdLibURL: "/libs/pyodide/python_stdlib.zip",
+        stdLibURL: VENDOR.stdlib, // see scripts/vendor.mjs
         packages: VENDOR.wheels // from requirements.txt, see scripts/vendor.mjs
     })
 

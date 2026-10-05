@@ -46,8 +46,10 @@ To build the store packages (needs `zip` installed on PATH):
 npm run package
 ```
 
-This writes `dist/anydownload-<version>-chrome.zip` and `dist/anydownload-<version>-firefox.zip`, plus unpacked
-copies in `dist/chrome/` and `dist/firefox/` for loading into the browser.
+This writes `dist/anydownload-<version>-chrome.zip`, `dist/anydownload-<version>-edge-store.zip` and
+`dist/anydownload-<version>-firefox.zip`, plus unpacked copies in `dist/chrome/`, `dist/edge-store/` and `dist/firefox/`
+for loading into the browser. The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
+rejects packages that contain a `.zip` file.
 
 ## Credits
 
