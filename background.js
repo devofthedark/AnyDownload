@@ -1,6 +1,7 @@
 if (typeof importScripts === "function") {
     try {
-        importScripts("rpc.js");
+        // absolute: the chrome build runs this from updater/service-worker.js, which paths resolve against
+        importScripts("/rpc.js");
     } catch (e) {
         console.warn("importScripts failed, continuing without rpc.js", e);
     }

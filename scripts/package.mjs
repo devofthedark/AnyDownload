@@ -3,6 +3,7 @@
 //   dist/anydownload-<version>-<target>.zip         what gets uploaded to each store
 // manifest.json in the repo works unpacked in both browsers; each build gets a copy trimmed to
 // the keys its browser understands, so the store linters don't flag the other browser's keys.
+// chrome is the Chromium build that's loaded unpacked, with the update checker in updater/ added.
 // edge-store is the Chromium build with the changes Edge Add-ons needs on top.
 //
 // Usage: npm run package   (needs `zip` on the PATH, and libs/ from `npm install`)
@@ -27,6 +28,30 @@ function chromium(manifest) {
     manifest.background = { service_worker: manifest.background.service_worker };
 }
 
+// replaces `from` in a copied file, which has to contain it
+function patch(file, from, to) {
+    const src = fs.readFileSync(file, 'utf8');
+    if (!src.includes(from)) throw new Error(`${path.relative(ROOT, file)} no longer contains ${JSON.stringify(from)}`);
+    fs.writeFileSync(file, src.replace(from, () => to));
+    fs.utimesSync(file, MTIME, MTIME);
+}
+
+// Chrome never updates an extension loaded unpacked, as the chrome build is, so that build checks
+// GitHub for new releases itself. A store's builds are updated by the store.
+function addUpdater(dir, files) {
+    files.push(...copy('updater', dir));
+    // the panel's update notice
+    const script = '<script src="iframe.js"></script>';
+    patch(path.join(dir, 'core/iframe/iframe.html'), script,
+        `${script}\n    <script src="/updater/check.js"></script>\n    <script src="/updater/panel.js"></script>`);
+}
+
+function chromeWithUpdater(manifest) {
+    chromium(manifest);
+    // background.js, then the update checks
+    manifest.background.service_worker = 'updater/service-worker.js';
+}
+
 // Edge Add-ons rejects packages with an archive inside, and Pyodide's stdlib is a zip. Pyodide only
 // fetches its bytes, so it doesn't care what the file is called: ship it as .bin instead.
 function renameStdlib(dir, files) {
@@ -44,7 +69,7 @@ function renameStdlib(dir, files) {
 
 // manifest: trims the manifest for the target's browser, files: changes to the copied files, if any
 const TARGETS = {
-    chrome: { manifest: chromium },
+    chrome: { manifest: chromeWithUpdater, files: addUpdater },
     'edge-store': { manifest: chromium, files: renameStdlib },
     firefox: {
         manifest(manifest) {
@@ -119,6 +144,10 @@ for (const [target, adapt] of Object.entries(TARGETS)) {
     const dir = path.join(DIST, target);
     const files = FILES.flatMap((rel) => copy(rel, dir));
     adapt.files?.(dir, files);
+    // a store build offering GitHub's zip would install a second, unpacked copy next to the store's
+    if (target !== 'chrome' && files.some((file) => file.startsWith('updater/'))) {
+        throw new Error(`the ${target} build mustn't include the update checker`);
+    }
 
     const manifest = structuredClone(base);
     adapt.manifest(manifest);

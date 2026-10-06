@@ -30,6 +30,22 @@ Simply install the extension and download from any site that you can name. No co
 4. Click on `Load unpacked` at the top left corner.
 5. Select the folder where you extracted the zip file to.
 
+#### Updating
+
+The Chromium version checks GitHub for a new release about twice a day, and the AnyDownload panel says when there is
+one. Click `Update` to download it, then follow the steps on the page that opens:
+
+1. Extract the downloaded zip file.
+2. Replace everything in the folder AnyDownload is loaded from (shown on its details page in `chrome://extensions`)
+   with the extracted files.
+3. Click `Reload AnyDownload`.
+
+Replacing the files keeps your settings. You can also remove AnyDownload and load the new folder instead, but then you
+have to accept the terms of use again. To check for updates yourself, or to turn the automatic checks off, click the
+version number at the bottom of the panel. Pre-releases are never offered.
+
+Version 1.0.0 doesn't check for updates, so update it by hand the same way: replace its files, then click the reload
+button on its card in `chrome://extensions`.
 
 
 ## Building
@@ -49,11 +65,21 @@ npm run package
 This writes `dist/anydownload-<version>-chrome.zip`, `dist/anydownload-<version>-edge-store.zip` and
 `dist/anydownload-<version>-firefox.zip`, plus unpacked copies in `dist/chrome/`, `dist/edge-store/` and `dist/firefox/`
 for loading into the browser. The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
-rejects packages that contain a `.zip` file.
+rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `updater/`), as the
+browser updates store installs itself.
+
+## Releasing
+
+The `chrome` build's update checker reads the repository's latest GitHub release, so each release needs:
+
+- a tag that's exactly the version in `manifest.json`, e.g. `1.2.0`
+- `anydownload-<version>-chrome.zip` from `npm run package` attached under that name, which is how the checker finds it
+- betas and release candidates (e.g. `1.2.0b1`, `1.2.0rc1`) marked as **Pre-release**, which GitHub never counts as the
+  latest release, so they're never offered as an update
 
 ## Credits
 
 The logo is a modified version of the "world-download" icon from [Tabler Icons](https://tabler.io/icons).
 
 [yt-dlp]: https://github.com/yt-dlp/yt-dlp
-[Releases]: https://github.com/devofthedark/AnyDownloads/releases
+[Releases]: https://github.com/devofthedark/AnyDownload/releases

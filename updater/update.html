@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Update AnyDownload</title>
+    <link rel="icon" type="image/svg+xml" href="/logo/icon.svg">
+    <link rel="stylesheet" href="/pages/pages.css">
+    <style>
+        :root { --ok: #188038; --error: #d93025; }
+        @media (prefers-color-scheme: dark) {
+            :root { --ok: #81c995; --error: #f28b82; }
+        }
+        .ok { color: var(--ok); }
+        .error { color: var(--error); }
+        .notes {
+            white-space: pre-wrap;
+            max-height: 260px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 14px;
+        }
+        progress { width: 100%; margin-top: 12px; }
+        li .actions { margin: 8px 0 4px; }
+        code { font-size: 13px; }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <img src="/logo/icon.svg" alt="">
+            <h1>Update AnyDownload</h1>
+        </header>
+
+        <p id="result" hidden></p>
+        <p id="status">Checking for updates…</p>
+
+        <section id="release" hidden>
+            <h2 id="release-title"></h2>
+            <p class="muted"><span id="release-date"></span>
+                <a id="release-page" target="_blank" rel="noopener">Release page</a></p>
+            <div class="notes" id="notes"></div>
+            <div class="actions">
+                <button class="primary" id="download">Update</button>
+                <span id="download-status" class="muted"></span>
+            </div>
+            <progress id="progress" max="1" value="0" hidden></progress>
+        </section>
+
+        <section id="steps" hidden>
+            <h2>Finish the update</h2>
+            <ol>
+                <li>Unzip <strong id="zip-name"></strong> from your downloads folder.</li>
+                <li>Open AnyDownload's details in your browser's extensions, which show the folder it's
+                    <strong>Loaded from</strong>.
+                    <div class="actions"><button id="open-extensions">Open the extensions page</button></div>
+                </li>
+                <li>Replace everything in that folder with the files inside the unzipped folder.
+                    <code>manifest.json</code> has to end up directly in AnyDownload's folder.</li>
+                <li>Come back here and reload AnyDownload.
+                    <div class="actions"><button class="primary" id="reload">Reload AnyDownload</button></div>
+                </li>
+            </ol>
+            <p class="muted">Reloading stops any AnyDownload panels that are open, along with their downloads. Close
+                them with ✕ and click the AnyDownload button again to get a working one.</p>
+            <p class="muted">If your browser says it couldn't load the extension, check that <code>manifest.json</code>
+                is directly in AnyDownload's folder, then click <strong>Retry</strong>.</p>
+            <p class="muted">Instead of replacing the files, you can also remove AnyDownload on the extensions page,
+                then click <strong>Load unpacked</strong> and pick the unzipped folder. You'll have to accept the terms
+                of use again.</p>
+        </section>
+
+        <section id="settings">
+            <h2>Checking for updates</h2>
+            <div class="actions">
+                <label><input type="checkbox" id="auto"> Check for updates automatically</label>
+                <button id="check">Check now</button>
+            </div>
+            <p class="muted">AnyDownload asks GitHub (api.github.com) for its latest release about twice a day. Like
+                any request, that shows GitHub your IP address; nothing about you or your downloads is sent.
+                Pre-releases are never offered.</p>
+        </section>
+
+        <p class="muted">You have version <span id="current"></span>.</p>
+    </main>
+    <script src="check.js"></script>
+    <script src="update.js"></script>
+</body>
+</html>
