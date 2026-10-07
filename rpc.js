@@ -217,14 +217,18 @@
                 });
             },
             
-            waitForDirect(id) {
+            /** Resolves once `key` is reached directly rather than through another node. */
+            waitForDirect(key, { interval = 50 } = {}) {
                 return new Promise(resolve => {
-                    const check = setInterval(() => {
-                        if (routes.get(id) === id) {
-                            clearInterval(check);
+                    // checked straight away: it's usually direct already, e.g. for every page fetch
+                    const check = () => {
+                        if (routes.get(key) === key) {
                             resolve();
+                        } else {
+                            setTimeout(check, interval);
                         }
-                    }, 50);
+                    };
+                    check();
                 });
             }
         };
