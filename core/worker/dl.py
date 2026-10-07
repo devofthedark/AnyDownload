@@ -896,6 +896,9 @@ def _describe(message):
     msg = re.sub(r'^[^\s:]+: ', '', msg)
     return f'{tag}: {msg}'
 
+class PlaylistNotSupported(yt_dlp.utils.YoutubeDLError):
+    msg = "Downloading playlists isn't supported. Open a single video to download it."
+
 class BrowserYDL(yt_dlp.YoutubeDL):
     @functools.cached_property
     def _request_director(self):
@@ -904,6 +907,14 @@ class BrowserYDL(yt_dlp.YoutubeDL):
     def to_screen(self, message, *args, **kwargs):
         super().to_screen(message, *args, **kwargs)
         js.set_status(_describe(message))
+
+    def process_ie_result(self, ie_result, download=True, extra_info=None):
+        """Refuses playlists, channels and pages with several videos as soon as they're extracted, before
+        yt-dlp goes through any of their entries. Every result comes through here, including ones that
+        another page led to. A video opened from a playlist is just the video, see noplaylist"""
+        if ie_result.get('_type') in ('playlist', 'multi_video'):
+            raise PlaylistNotSupported()
+        return super().process_ie_result(ie_result, download, extra_info)
 
 def _stream_label(info):
     """Which part of the download this is, when yt-dlp is fetching video and audio separately"""
@@ -940,13 +951,9 @@ ydl_opts = {
 # This file is only run once per session; the functions below are called by the worker
 
 def list_formats():
-    """Extract the current page and return its formats for the UI. A playlist page has no formats of
-    its own, so its entries are only listed, not extracted, and just their count is returned"""
-    with BrowserYDL(ydl_opts | {"extract_flat": "in_playlist"}) as ydl:
+    """Extract the current page and return its formats for the UI"""
+    with BrowserYDL(ydl_opts) as ydl:
         info = ydl.extract_info(run_sync(js.cur_url()), download=False, process=True)
-    if info.get("_type") == "playlist":
-        count = info.get("playlist_count") or len(info.get("entries") or [])
-        return {"formats": [], "playlist": {"title": info.get("title"), "count": count}}
     formats = []
     for fmt in info.get("formats") or []:
         formats.append({
@@ -961,7 +968,7 @@ def list_formats():
             "filesize": fmt.get("filesize") or fmt.get("filesize_approx"),
             "note": fmt.get("format_note"),
         })
-    return {"formats": formats, "playlist": None}
+    return formats
 
 def download(fmt=None, output=None, only=None):
     """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.

@@ -226,22 +226,16 @@ cancelBtn.addEventListener('click', () => {
 loadFormatsBtn.addEventListener('click', async () => {
     statusEl.textContent = 'Loading formats…';
     try {
-        const { formats, playlist } = await workerJob('formats', {});
+        // a playlist fails here, as it does for Download (see PlaylistNotSupported in dl.py)
+        const formats = await workerJob('formats', {});
         formatsLoaded = true;
         loadFormatsBtn.disabled = true;
-        if (playlist) {
-            // nothing to pick from: Download saves every entry, with the Best/None choices above
-            const videos = `${playlist.count} video${playlist.count === 1 ? '' : 's'}`;
-            loadFormatsBtn.textContent = 'Playlist: no formats to choose from';
-            statusEl.textContent = `This page is a playlist of ${videos}. Download saves all of them; open a single video to choose its formats.`;
-        } else {
-            formatsById = new Map(formats.map((f) => [f.id, f]));
-            fillSelect(videoSel, formats.filter((f) => f.vcodec !== 'none'), videoLabel);
-            // only "none" rules audio out: an unknown acodec can still be audio, e.g. HLS audio renditions
-            fillSelect(audioSel, formats.filter((f) => f.vcodec === 'none' && f.acodec !== 'none'), audioLabel);
-            loadFormatsBtn.textContent = `${formats.length} formats loaded`;
-            statusEl.textContent = 'Ready to download';
-        }
+        formatsById = new Map(formats.map((f) => [f.id, f]));
+        fillSelect(videoSel, formats.filter((f) => f.vcodec !== 'none'), videoLabel);
+        // only "none" rules audio out: an unknown acodec can still be audio, e.g. HLS audio renditions
+        fillSelect(audioSel, formats.filter((f) => f.vcodec === 'none' && f.acodec !== 'none'), audioLabel);
+        loadFormatsBtn.textContent = `${formats.length} formats loaded`;
+        statusEl.textContent = 'Ready to download';
     } catch (e) {
         // after fail() the status already says what went wrong
         if (failure) return;
