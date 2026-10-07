@@ -17,10 +17,7 @@ Simply install the extension and download from any site that you can name. No co
 
 ### Firefox
 
-1. Download `anydownload-<version>-firefox.zip` from the [releases][Releases] page.
-2. Extract the zip file.
-3. Go to `about:debugging` > `This Firefox` and click on `Load Temporary Add-on...`
-4. Open `manifest.json` from the extracted zip file.
+Install from [Firefox add-ons](https://addons.mozilla.org/en-US/firefox/addon/anydownload/).
 
 ### Chromium
 
