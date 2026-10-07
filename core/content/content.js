@@ -28,10 +28,15 @@ function callSw(method, params) {
 // The requests sent for the worker's current job, by id. The worker cancelling a body it was handed
 // doesn't get back to the request here, which would stay open, so the worker has these aborted when
 // the job is cancelled or over (see "abortFetches"), or one of them when it gives up on its body (see
-// "abortFetch"). Watching for the end of each body isn't possible here: Firefox won't let a stream call
-// back into a content script.
+// "abortFetch"). Closing the panel aborts them too, as the worker goes with it. Watching for the end of
+// each body isn't possible here: Firefox won't let a stream call back into a content script.
 const openFetches = new Map();
 let fetchIds = 0;
+// Aborting a request whose body has been read already does nothing
+function abortOpenFetches(why) {
+    for (const abort of openFetches.values()) abort.abort(new DOMException(why, "AbortError"));
+    openFetches.clear();
+}
 // How long a response waits for the worker's direct channel (see "bridge"), which a request can only
 // arrive by, so it's normally there already. It isn't once the panel has closed (see "close").
 const CHANNEL_TIMEOUT = 10_000;
@@ -76,12 +81,8 @@ content.handle("abortFetch", async ({ id }) => {
     openFetches.get(id)?.abort(new DOMException("The worker stopped reading it", "AbortError"));
     openFetches.delete(id);
 });
-// the worker's job was cancelled or is over, see openFetches. Aborting a request whose body has been
-// read already does nothing.
-content.handle("abortFetches", async () => {
-    for (const abort of openFetches.values()) abort.abort(new DOMException("Cancelled", "AbortError"));
-    openFetches.clear();
-});
+// the worker's job was cancelled or is over, see openFetches
+content.handle("abortFetches", async () => abortOpenFetches("Cancelled"));
 content.handle("cur_url", async (params, {signal}) => {
     return location.href
 })
@@ -158,6 +159,8 @@ async function main() {
 
     content.handle("close", async () => {
         host.remove();
+        // nothing will read them now, and left open they'd keep their connections busy
+        abortOpenFetches("The panel was closed");
         // Tear down this session's links so their window/port listeners can't
         // linger and intercept the next session's identically-named "content"
         // node — that's what caused the cross-session RPC loops.
