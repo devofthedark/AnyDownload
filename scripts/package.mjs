@@ -75,6 +75,9 @@ const TARGETS = {
         manifest(manifest) {
             // Firefox runs background.scripts as an event page and ignores service_worker
             manifest.background = { scripts: manifest.background.scripts };
+            // Chrome's and Edge's (their versions match): 137 is the first with JSPI (WebAssembly.Suspending),
+            // which Pyodide's run_sync needs. Firefox's minimum is in browser_specific_settings.
+            delete manifest.minimum_chrome_version;
         },
     },
 };
