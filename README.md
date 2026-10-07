@@ -4,22 +4,34 @@
 </sub>
 AnyDownload
 </h1>
-
-Download videos from anywhere you can name with the power of [yt-dlp][yt-dlp], 
-now fully in the browser.
-
-Simply install the extension and download from any site that you can name. No companion app required. Runs fully locally on your machine in the browser.
-
-> [!NOTE]
-> This project is not affiliated with the [yt-dlp][yt-dlp] project. It is an independent project.
-
-## Installing
-
+ 
+**Download media from almost any site, entirely inside your browser.**
+ 
+AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% locally: there is no companion app to install, no helper binary, and no server in the middle. Everything happens inside the extension on your machine.
+ 
+## Features
+ 
+- **Works on a huge range of sites**: yt-dlp's extractors do the heavy lifting, so if yt-dlp can handle a site, AnyDownload can too.
+- **Fully local**: no companion apps, no backend servers, no relaying your URLs or files through a third party.
+- **Format and quality picker**: choose exactly which stream you want.
+- **Convert to any output format**: powered by [Mediabunny][mediabunny], which is bundled with the extension and handles the muxing and conversion work you would normally use ffmpeg for.
+- **Audio-only downloads**: save just the audio track.
+- **Logged-in downloads**: uses the cookies from your existing browser sessions, so content you can access while signed in is content you can download.
+## How it works
+ 
+AnyDownload runs yt-dlp inside the extension using [Pyodide][pyodide] (CPython compiled to WebAssembly). Media processing (merging streams, remuxing, converting formats) is done by Mediabunny, also bundled in the extension. Nothing leaves your browser except the requests to the sites you are downloading from.
+ 
+**Large files.** WebAssembly is limited to 4 GB of memory. AnyDownload gets around this by using the [Origin Private File System (OPFS)](https://developer.mozilla.org/docs/Web/API/File_System_API/Origin_private_file_system) for storage instead of holding everything in memory.
+ 
+**YouTube.** YouTube requires solving a JavaScript challenge. AnyDownload executes it in a sandbox.
+ 
+## Installation
+ 
 ### Firefox
-
-Install from [Firefox add-ons](https://addons.mozilla.org/en-US/firefox/addon/anydownload/).
-
-### Chromium
+ 
+Install from **[Firefox add-ons][amo-link]**
+ 
+### Chromium-based browsers (Chrome, Edge, Brave, etc.)
 
 1. Download `anydownload-<version>-chrome.zip` from the [releases][Releases] page.
 2. Extract the zip file.
@@ -44,6 +56,15 @@ version number at the bottom of the panel. Pre-releases are never offered.
 Version 1.0.0 doesn't check for updates, so update it by hand the same way: replace its files, then click the reload
 button on its card in `chrome://extensions`.
 
+## Limitations
+ 
+- **No DRM-protected content.** AnyDownload cannot download media protected by DRM.
+- **Firefox private browsing.** OPFS is not available in Firefox private windows, so AnyDownload falls back to in-memory storage there. Very large downloads may hit memory limits in that mode.
+
+
+## Disclaimer
+ 
+Only download content you have the right to save. You are responsible for complying with the terms of service of the sites you use and with the laws that apply to you.
 
 ## Building
 
@@ -67,7 +88,19 @@ browser updates store installs itself.
 
 ## Credits
 
+- [yt-dlp][yt-dlp]: the extraction engine
+- [Pyodide][pyodide]: Python in WebAssembly
+- [Mediabunny][mediabunny]: media muxing and conversion
+
 The logo is a modified version of the "world-download" icon from [Tabler Icons](https://tabler.io/icons).
+
+## License
+ 
+AnyDownload is licensed under the [GNU General Public License v3.0](LICENSE.txt).
 
 [yt-dlp]: https://github.com/yt-dlp/yt-dlp
 [Releases]: https://github.com/devofthedark/AnyDownload/releases
+[pyodide]: https://pyodide.org/
+[mediabunny]: https://github.com/Vanilagy/mediabunny
+[amo-link]: https://addons.mozilla.org/en-US/firefox/addon/anydownload
+

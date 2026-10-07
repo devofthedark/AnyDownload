@@ -15,7 +15,7 @@ import path from 'node:path';
 const ROOT = path.join(import.meta.dirname, '..');
 const DIST = path.join(ROOT, 'dist');
 // everything the extension loads at runtime; the rest of the repo is build tooling
-const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs', 'LICENCE.txt', 'THIRD_PARTY_LICENSES.txt'];
+const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs', 'LICENSE.txt', 'THIRD_PARTY_LICENSES.txt'];
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 // zip stores timestamps, so give every file the same one to make rebuilds byte-identical
 const MTIME = new Date('2020-01-01T00:00:00Z');
