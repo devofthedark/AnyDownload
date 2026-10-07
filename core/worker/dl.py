@@ -931,7 +931,10 @@ ydl_opts = {
     "noplaylist": True,
     "cookiefile": "/cookies.txt", # the page's cookies, written by the worker before each call below
     "extractor_args": {"youtube": {"player_client": ["visionos"]}}, # see the visionos notes above
-    "progress_hooks": [progress_hook]
+    "progress_hooks": [progress_hook],
+    "retries": 10,
+    "fragment_retries": 10,
+    "file_access_retries": 3
 }
 
 # This file is only run once per session; the functions below are called by the worker
