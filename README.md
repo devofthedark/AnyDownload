@@ -7,7 +7,7 @@ AnyDownload
  
 **Download media from almost any site, entirely inside your browser.**
  
-AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% locally: there is no companion app to install, no helper binary, and no server in the middle. Everything happens inside the extension on your machine.
+AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% locally: there is no companion app to install, no additional helper programs, and no server in the middle. Everything happens inside the extension on your machine.
  
 ## Features
  
