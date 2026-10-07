@@ -30,7 +30,8 @@ class FetchStream:
 
     def _pump(self):
         try:
-            # gives up when Cancel is clicked, even if the response has stalled (see read_chunk)
+            # gives up when Cancel is clicked, or when no data comes for the request's timeout (see
+            # read_chunk and timedReader), which Response.read() turns into a TransportError yt-dlp retries
             chunk = run_sync(js.read_chunk(self._reader))
         except JsException:
             _check_cancelled()
@@ -112,6 +113,8 @@ class FetchRH(RequestHandler):
             "body": js_compat_body,
             # never send the browser's cookies, even to the page's origin
             "anonymous": anonymous,
+            # seconds, like yt-dlp's own handlers: socket_timeout, unless the request sets its own
+            "timeout": self._calculate_timeout(request),
         }
         if referrer:
             # only honoured when it's on the page's origin, otherwise the page's URL is used

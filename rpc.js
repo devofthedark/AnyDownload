@@ -96,7 +96,12 @@
                 }
             } catch (e) {
                 if (isCall) {
-                    ship({ ns: NS, v: 1, kind: 'res', id: env.id, from: id, to: env.from, hops: 0, error: encodeErr(e) });
+                    try {
+                        ship({ ns: NS, v: 1, kind: 'res', id: env.id, from: id, to: env.from, hops: 0, error: encodeErr(e) });
+                    } catch (unreachable) {
+                        // the caller can't be reached any more, e.g. its link went down while this ran
+                        onError(unreachable);
+                    }
                 } else {
                     onError(e);
                 }
@@ -217,13 +222,19 @@
                 });
             },
             
-            /** Resolves once `key` is reached directly rather than through another node. */
-            waitForDirect(key, { interval = 50 } = {}) {
-                return new Promise(resolve => {
+            /**
+             * Resolves once `key` is reached directly rather than through another node. With a
+             * `timeout`, rejects if it isn't by then.
+             */
+            waitForDirect(key, { timeout = 0, interval = 50 } = {}) {
+                const deadline = timeout ? Date.now() + timeout : Infinity;
+                return new Promise((resolve, reject) => {
                     // checked straight away: it's usually direct already, e.g. for every page fetch
                     const check = () => {
                         if (routes.get(key) === key) {
                             resolve();
+                        } else if (Date.now() >= deadline) {
+                            reject(new Error(`[${id}] no direct route to "${key}" after ${timeout}ms`));
                         } else {
                             setTimeout(check, interval);
                         }

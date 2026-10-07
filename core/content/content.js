@@ -25,17 +25,28 @@ function callSw(method, params) {
 // Every link below is a MessagePort or runtime port. Nothing listens on the page's window: the
 // page can read and forge anything posted there.
 
-// The requests sent for the worker's current job. The worker cancelling a body it was handed doesn't
-// get back to the request here, which would stay open, so the worker has these aborted when the job
-// is cancelled or over (see "abortFetches"). Watching for the end of each body isn't possible here:
-// Firefox won't let a stream call back into a content script.
-const openFetches = new Set();
+// The requests sent for the worker's current job, by id. The worker cancelling a body it was handed
+// doesn't get back to the request here, which would stay open, so the worker has these aborted when
+// the job is cancelled or over (see "abortFetches"), or one of them when it gives up on its body (see
+// "abortFetch"). Watching for the end of each body isn't possible here: Firefox won't let a stream call
+// back into a content script.
+const openFetches = new Map();
+let fetchIds = 0;
+// How long a response waits for the worker's direct channel (see "bridge"), which a request can only
+// arrive by, so it's normally there already. It isn't once the panel has closed (see "close").
+const CHANNEL_TIMEOUT = 10_000;
 content.handle("proxyfetch", async (request, { transfer, signal }) => {
-    let { method, url, body, headers, credentials, referrer } = request;
+    let { method, url, body, headers, credentials, referrer, timeout } = request;
     const abort = new AbortController();
     // the call's own signal: Cancel clicked while this still waits for the response
     signal.addEventListener("abort", () => abort.abort(signal.reason), { once: true });
-    openFetches.add(abort);
+    const id = ++fetchIds;
+    openFetches.set(id, abort);
+    // yt-dlp's timeout in seconds (see FetchRH in dl.py), for the response to arrive. A TimeoutError
+    // makes yt-dlp retry; the worker doesn't send it again itself, as it does after a TypeError.
+    const timer = timeout && setTimeout(() => {
+        abort.abort(new DOMException(`no response after ${timeout}s`, "TimeoutError"));
+    }, timeout * 1000);
     let response;
     try {
         response = await fetch(url, {
@@ -45,23 +56,30 @@ content.handle("proxyfetch", async (request, { transfer, signal }) => {
             credentials: credentials,
             referrer: referrer,
             signal: abort.signal
-        })
+        }).finally(() => clearTimeout(timer)); // the body is the worker's to read, however long it takes
+        await content.waitForLink("worker", { timeout: CHANNEL_TIMEOUT });
+        await content.waitForDirect("worker", { timeout: CHANNEL_TIMEOUT });
     } catch (e) {
-        openFetches.delete(abort);
+        // ends the response if there is one: left open, it would keep its connection busy
+        abort.abort(e);
+        openFetches.delete(id);
         throw e;
     }
-    await content.waitForLink("worker");
-    await content.waitForDirect("worker");
     const stream = response.body;
     transfer.push(stream)
     const entries = []
     response.headers.forEach((value, key) => entries.push([key, value]));
-    return { stream, status: response.status, url: response.url, headers: entries }
+    return { stream, status: response.status, url: response.url, headers: entries, id }
+});
+// the worker gave up on the body of request `id`, e.g. it stopped coming
+content.handle("abortFetch", async ({ id }) => {
+    openFetches.get(id)?.abort(new DOMException("The worker stopped reading it", "AbortError"));
+    openFetches.delete(id);
 });
 // the worker's job was cancelled or is over, see openFetches. Aborting a request whose body has been
 // read already does nothing.
 content.handle("abortFetches", async () => {
-    for (const abort of openFetches) abort.abort(new DOMException("Cancelled", "AbortError"));
+    for (const abort of openFetches.values()) abort.abort(new DOMException("Cancelled", "AbortError"));
     openFetches.clear();
 });
 content.handle("cur_url", async (params, {signal}) => {

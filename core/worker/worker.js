@@ -78,6 +78,14 @@ function abortPageFetches() {
         console.warn("couldn't end the page's requests", e);
     }
 }
+// the same for one of them, see timedReader()
+function abortPageFetch(id) {
+    try {
+        worker.notify("content", "abortFetch", { id });
+    } catch (e) {
+        console.warn("couldn't end the page's request", e);
+    }
+}
 
 // thin wrappers around RPC calls to give to python
 async function jsc(code) {
@@ -96,28 +104,63 @@ async function mint_potoken(content_binding, mint_cold_start_token, mint_error_t
 // sends it any, and the page's cross-site requests are third-party, which get blocked.
 // `proxy` asks for the page's Origin/Referer, which also means sending it from the content script.
 // `request.anonymous` requests never get cookies.
+// Gives up like the page's fetch does after `request.timeout` seconds without a response (see
+// proxyfetch in content.js). The result's abortRequest() ends the request, body and all.
 async function send(request, proxy, signal) {
     const sameOrigin = new URL(request.url).origin === pageOrigin;
     if (sameOrigin || proxy) {
         await worker.waitForLink("content");
         const credentials = sameOrigin && !request.anonymous ? "include" : "omit";
         try {
-            return await worker.call("content", "proxyfetch", { ...request, credentials }, { signal });
+            const response = await worker.call("content", "proxyfetch", { ...request, credentials }, { signal });
+            // cancelling the body here doesn't get back to the page's request (see openFetches there)
+            return { ...response, abortRequest: () => abortPageFetch(response.id) };
         } catch (e) {
             // fetch's network/CORS failure, e.g. a redirect to another origin; send it from here instead
             if (e.name !== "TypeError") throw e;
             console.debug(`page fetch of ${request.url} failed (${e.message}), retrying from the worker`);
         }
     }
-    const { method, url, body, headers } = request;
+    const { method, url, body, headers, timeout } = request;
+    const abort = new AbortController();
+    const timer = timeout && setTimeout(() => {
+        abort.abort(new DOMException(`no response after ${timeout}s`, "TimeoutError"));
+    }, timeout * 1000);
     const response = await fetch(url, {
         method: method,
         headers: headers,
         body: body === null ? undefined : body,
         credentials: "omit",
-        signal
-    });
-    return { stream: response.body, status: response.status, url: response.url, headers: [...response.headers.entries()] };
+        signal: signal ? AbortSignal.any([signal, abort.signal]) : abort.signal
+    }).finally(() => clearTimeout(timer)); // the body has its own timeout, see timedReader()
+    return {
+        stream: response.body, status: response.status, url: response.url, headers: [...response.headers.entries()],
+        abortRequest: () => abort.abort(new DOMException("The worker stopped reading it", "AbortError")),
+    };
+}
+
+// A reader for `stream` whose read() gives up once `timeout` seconds pass without any data, as yt-dlp's
+// own handlers do (yt-dlp then retries), and ends the request with `abortRequest`: left open, it would
+// keep its connection busy, and the browser would hold back the retry for the same URL behind it.
+function timedReader(stream, timeout, abortRequest) {
+    const reader = stream.getReader();
+    return {
+        read() {
+            const read = reader.read();
+            if (!timeout) return read;
+            let timer;
+            const stalled = new Promise((_, reject) => {
+                timer = setTimeout(() => {
+                    const reason = new DOMException(`no data for ${timeout}s`, "TimeoutError");
+                    reject(reason);
+                    abortRequest();
+                    reader.cancel(reason).catch(() => {});
+                }, timeout * 1000);
+            });
+            return Promise.race([read, stalled]).finally(() => clearTimeout(timer));
+        },
+        cancel: (reason) => reader.cancel(reason),
+    };
 }
 
 // Sends `request` (see send() above) and hands Python a reader for the body. Cancelling aborts the
@@ -125,8 +168,8 @@ async function send(request, proxy, signal) {
 // the browser would hold back the next request for the same URL until it timed out.
 async function python_fetch(request, proxy) {
     const signal = job?.signal;
-    const { stream, ...response } = await send(request, proxy, signal);
-    const reader = stream?.getReader();
+    const { stream, abortRequest, ...response } = await send(request, proxy, signal);
+    const reader = stream && timedReader(stream, request.timeout, abortRequest);
     if (reader && signal) {
         const release = () => reader.cancel(signal.reason).catch(() => {});
         if (signal.aborted) release();
