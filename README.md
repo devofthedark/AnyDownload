@@ -68,15 +68,6 @@ for loading into the browser. The `edge-store` build is the Chromium build adjus
 rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `updater/`), as the
 browser updates store installs itself.
 
-## Releasing
-
-The `chrome` build's update checker reads the repository's latest GitHub release, so each release needs:
-
-- a tag that's exactly the version in `manifest.json`, e.g. `1.2.0`
-- `anydownload-<version>-chrome.zip` from `npm run package` attached under that name, which is how the checker finds it
-- betas and release candidates (e.g. `1.2.0b1`, `1.2.0rc1`) marked as **Pre-release**, which GitHub never counts as the
-  latest release, so they're never offered as an update
-
 ## Credits
 
 The logo is a modified version of the "world-download" icon from [Tabler Icons](https://tabler.io/icons).
