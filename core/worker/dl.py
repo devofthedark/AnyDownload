@@ -117,7 +117,7 @@ class FetchRH(RequestHandler):
             "timeout": self._calculate_timeout(request),
         }
         if referrer:
-            # only honoured when it's on the page's origin, otherwise the page's URL is used
+            # fetch only sends one from the page's origin, so the background sets any other (see proxyfetch in content.js)
             js_compat_request["referrer"] = referrer
         # js.console.debug("Sending HTTP request:", js_compat_request, "proxy", proxy)
 
@@ -944,7 +944,6 @@ ydl_opts = {
     # a video opened from a playlist (e.g. YouTube's watch?v=...&list=...) is the video, not the playlist
     "noplaylist": True,
     "cookiefile": "/cookies.txt", # the page's cookies, written by the worker before each call below
-    "extractor_args": {"youtube": {"player_client": ["visionos"]}}, # see the visionos notes above
     "progress_hooks": [progress_hook],
     "retries": 10,
     "fragment_retries": 10,

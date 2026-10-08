@@ -52,6 +52,16 @@ content.handle("proxyfetch", async (request, { transfer, signal }) => {
     const timer = timeout && setTimeout(() => {
         abort.abort(new DOMException(`no response after ${timeout}s`, "TimeoutError"));
     }, timeout * 1000);
+    // Fetch only sends a Referer from this page's origin, and puts this page's URL in place of any other.
+    // One from another site has to be the real one, e.g. for YouTube's embed page, which yt-dlp asks for
+    // as if embedded on another site, so the background sets it on this request (see addHeaderRule there).
+    const referrerOrigin = referrer && URL.parse(referrer)?.origin;
+    const rule = referrerOrigin && referrerOrigin !== location.origin
+        ? await callSw("headerRule", { url, method, headers: { referer: referrer } }).catch((e) => {
+            console.warn(`couldn't set the Referer of ${url}, so it gets this page's`, e);
+            return null;
+        })
+        : null;
     let response;
     try {
         response = await fetch(url, {
@@ -61,7 +71,11 @@ content.handle("proxyfetch", async (request, { transfer, signal }) => {
             credentials: credentials,
             referrer: referrer,
             signal: abort.signal
-        }).finally(() => clearTimeout(timer)); // the body is the worker's to read, however long it takes
+        }).finally(() => {
+            clearTimeout(timer); // the body is the worker's to read, however long it takes
+            // the request has gone out with its headers by now
+            if (rule) callSw("dropHeaderRule", { id: rule }).catch((e) => console.warn("couldn't drop a header rule", e));
+        });
         await content.waitForLink("worker", { timeout: CHANNEL_TIMEOUT });
         await content.waitForDirect("worker", { timeout: CHANNEL_TIMEOUT });
     } catch (e) {

@@ -125,6 +125,42 @@ async function cookies(url, tab) {
     return netscapeSerializer(await chrome.cookies.getAll(query));
 }
 
+// Headers fetch can't send, such as a Referer from another site (see proxyfetch in content.js), go on the
+// one request that needs them through a session rule matching only it: its exact URL and method, from its
+// tab. The content script drops the rule once the request is sent; RULE_LIFETIME is in case it can't.
+const RULE_LIFETIME = 60_000;
+let lastRuleId = 0;
+async function addHeaderRule(tabId, { url, method, headers }) {
+    const rules = await chrome.declarativeNetRequest.getSessionRules();
+    // taken before anything else can run, so two requests at once don't get the same id
+    const id = lastRuleId = Math.max(lastRuleId, ...rules.map((rule) => rule.id)) + 1;
+    // urlFilter can't escape its own special characters, which a URL rarely has
+    const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = /[*^|]/.test(url) ? { regexFilter: `^${escaped}$` } : { urlFilter: `|${url}|` };
+    await chrome.declarativeNetRequest.updateSessionRules({
+        addRules: [{
+            id,
+            priority: 1,
+            action: {
+                type: 'modifyHeaders',
+                requestHeaders: Object.entries(headers).map(([header, value]) => ({ header, operation: 'set', value })),
+            },
+            condition: {
+                ...match,
+                tabIds: [tabId],
+                requestMethods: [method.toLowerCase()],
+                resourceTypes: ['xmlhttprequest'],
+            },
+        }],
+    });
+    setTimeout(() => dropHeaderRule(id), RULE_LIFETIME);
+    return id;
+}
+
+function dropHeaderRule(id) {
+    return chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [id] });
+}
+
 // Every tab's content script is a node called "content", so a single shared node would send each
 // reply down whichever tab connected last. Instead each connection gets its own node, which also
 // knows the tab it serves.
@@ -136,6 +172,12 @@ chrome.runtime.onConnect.addListener((port) => {
         })
         .handle("potoken", async (params, { signal }) => {
             return await potoken(params, port.sender);
+        })
+        .handle("headerRule", async (params) => {
+            return await addHeaderRule(tab.id, params);
+        })
+        .handle("dropHeaderRule", async ({ id }) => {
+            await dropHeaderRule(id);
         })
         .connect("content", portLink(port));
 })

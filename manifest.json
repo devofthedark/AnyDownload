@@ -19,7 +19,8 @@
   "permissions": [
     "scripting",
     "cookies",
-    "storage"
+    "storage",
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "*://*/*"
