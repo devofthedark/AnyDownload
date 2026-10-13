@@ -9,10 +9,10 @@
     "postinstall": "node scripts/vendor.mjs"
   },
   "dependencies": {
-    "@mediabunny/aac-encoder": "1.60.0",
-    "@mediabunny/flac-encoder": "1.60.0",
-    "@mediabunny/mp3-encoder": "1.60.0",
-    "mediabunny": "1.60.0",
+    "@mediabunny/aac-encoder": "1.61.4",
+    "@mediabunny/flac-encoder": "1.61.4",
+    "@mediabunny/mp3-encoder": "1.61.4",
+    "mediabunny": "1.61.4",
     "pyodide": "314.0.7"
   },
   "engines": {
