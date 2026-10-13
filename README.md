@@ -20,11 +20,14 @@ AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% loc
 
 ## Installation
  
-### Firefox
+
+| Browser | Install Method |
+| --- | --- |
+| Firefox | Install from **[Firefox Add-ons][amo-link]** |
+| Microsoft Edge | Install from **[Edge Add-ons][edge-link]** |
+| Other Chromium-based (Chrome, Brave, etc.) | See instructions below |
  
-Install from **[Firefox add-ons][amo-link]**
- 
-### Chromium-based browsers (Chrome, Edge, Brave, etc.)
+### Chromium-based browsers (Chrome, Brave, etc.)
 
 1. Download `anydownload-<version>-chrome.zip` from the [releases][Releases] page.
 2. Extract the zip file.
@@ -48,6 +51,7 @@ version number at the bottom of the panel. Pre-releases are never offered.
 
 Version 1.0.0 doesn't check for updates, so update it by hand the same way: replace its files, then click the reload
 button on its card in `chrome://extensions`.
+
 ## How it works
  
 AnyDownload runs yt-dlp inside the extension using [Pyodide][pyodide] (CPython compiled to WebAssembly). Media processing (merging streams, remuxing, converting formats) is done by Mediabunny, also bundled in the extension. Nothing leaves your browser except the requests to the sites you are downloading from.
@@ -103,4 +107,5 @@ AnyDownload is licensed under the [GNU General Public License v3.0](LICENSE.txt)
 [pyodide]: https://pyodide.org/
 [mediabunny]: https://github.com/Vanilagy/mediabunny
 [amo-link]: https://addons.mozilla.org/en-US/firefox/addon/anydownload
+[edge-link]: https://microsoftedge.microsoft.com/addons/detail/anydownload/icpkdhomdhnooolmlgipoiaejfoadcfb
 
