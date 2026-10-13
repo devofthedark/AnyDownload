@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Allow AnyDownload to access websites</title>
+    <link rel="icon" type="image/svg+xml" href="/logo/icon.svg">
+    <link rel="stylesheet" href="/pages/pages.css">
+</head>
+<body>
+    <main>
+        <header>
+            <img src="/logo/icon.svg" alt="">
+            <h1>Access to websites</h1>
+        </header>
+
+        <p>AnyDownload downloads straight from the sites media is on, which are often not the page you're on, e.g.
+            YouTube's videos come from googlevideo.com. Firefox only lets it do that, and read a site's cookies for
+            <b>Use Cookies</b>, once you allow it to access websites. It only does so when you download something.</p>
+
+        <div class="actions">
+            <button class="primary" id="allow">Allow access</button>
+        </div>
+        <p id="granted" class="muted" hidden>AnyDownload can access websites. You can close this tab and download
+            again.</p>
+        <p id="denied" class="muted" hidden>Firefox didn't allow it. You can also turn on "Access your data for all
+            websites" in AnyDownload's Permissions tab in <code>about:addons</code>.</p>
+    </main>
+    <script src="access.js"></script>
+</body>
+</html>

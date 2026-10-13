@@ -4,6 +4,7 @@
 // manifest.json in the repo works unpacked in both browsers; each build gets a copy trimmed to
 // the keys its browser understands, so the store linters don't flag the other browser's keys.
 // chrome is the Chromium build that's loaded unpacked, with the update checker in updater/ added.
+// firefox gets the panel's notice for when it has no access to websites, in firefox/.
 // edge-store is the Chromium build with the changes Edge Add-ons needs on top.
 //
 // Usage: npm run package   (needs `zip` on the PATH, and libs/ from `npm install`)
@@ -55,6 +56,15 @@ function chromeWithUpdater(manifest) {
     chromium(manifest);
     // background.js, then the update checks
     manifest.background.service_worker = 'updater/service-worker.js';
+}
+
+// Firefox lets the user turn host_permissions off, which Chrome doesn't, so that build's panel says when
+// they're off and links to a page that asks for them (see firefox/panel.js).
+function addSiteAccess(dir, files) {
+    files.push(...copy('firefox', dir));
+    const script = '<script src="iframe.js"></script>';
+    patch(path.join(dir, 'core/iframe/iframe.html'), script,
+        `${script}\n    <script src="/firefox/panel.js"></script>`);
 }
 
 // Edge Add-ons rejects packages with an archive inside, and Pyodide's stdlib is a zip. Pyodide only
@@ -125,10 +135,13 @@ const TARGETS = {
         manifest(manifest) {
             // Firefox runs background.scripts as an event page and ignores service_worker
             manifest.background = { scripts: manifest.background.scripts };
+            // tells the panel whether it has access to websites, see addSiteAccess
+            manifest.background.scripts.push('firefox/background.js');
             // Chrome's and Edge's (their versions match): 137 is the first with JSPI (WebAssembly.Suspending),
             // which Pyodide's run_sync needs. Firefox's minimum is in browser_specific_settings.
             delete manifest.minimum_chrome_version;
         },
+        files: addSiteAccess,
     },
 };
 
@@ -200,6 +213,9 @@ for (const [target, adapt] of Object.entries(TARGETS)) {
     // a store build offering GitHub's zip would install a second, unpacked copy next to the store's
     if (target !== 'chrome' && files.some((file) => file.startsWith('updater/'))) {
         throw new Error(`the ${target} build mustn't include the update checker`);
+    }
+    if (target !== 'firefox' && files.some((file) => file.startsWith('firefox/'))) {
+        throw new Error(`the ${target} build mustn't include the firefox notice`);
     }
 
     const manifest = structuredClone(base);

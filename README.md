@@ -63,6 +63,9 @@ AnyDownload runs yt-dlp inside the extension using [Pyodide][pyodide] (CPython c
 ## Limitations
  
 - **No DRM-protected content.** AnyDownload cannot download media protected by DRM.
+- **Firefox site access.** Firefox lets you turn off an add-on's access to websites, and AnyDownload can't download
+  from most sites without it. If it's off, the panel says so: click `Allow access` there, or turn on "Access your data
+  for all websites" in AnyDownload's Permissions tab in `about:addons`.
 - **Firefox private browsing.** OPFS is not available in Firefox private windows, so AnyDownload falls back to in-memory storage there. Very large downloads may hit memory limits in that mode.
 
 
@@ -88,7 +91,8 @@ This writes `dist/anydownload-<version>-chrome.zip`, `dist/anydownload-<version>
 `dist/anydownload-<version>-firefox.zip`, plus unpacked copies in `dist/chrome/`, `dist/edge-store/` and `dist/firefox/`
 for loading into the browser. The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
 rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `updater/`), as the
-browser updates store installs itself.
+browser updates store installs itself. Only the `firefox` build has the panel's notice for when Firefox hasn't given
+AnyDownload access to websites (in `firefox/`).
 
 ## Credits
 
