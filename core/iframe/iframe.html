@@ -106,6 +106,48 @@
             padding: 5px 6px;
             font-size: 12px;
         }
+        #cookies {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        #cookies label { cursor: pointer; }
+        #cookies label:has(:disabled) { cursor: default; }
+        #use-cookies { margin: 0; }
+        #cookies .help {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 14px;
+            height: 14px;
+            border: 1px solid currentColor;
+            border-radius: 50%;
+            color: #888;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 1;
+            cursor: help;
+            user-select: none;
+        }
+        #cookies .help:hover, #cookies .help:focus-visible { color: #e8e8ea; outline: none; }
+        /* below the row and as wide as it, so it never runs off the panel */
+        #cookies-help {
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            right: 0;
+            z-index: 1;
+            padding: 7px 9px;
+            background: #2f3034;
+            color: #e8e8ea;
+            border: 1px solid #444;
+            border-radius: 6px;
+            box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+            font-size: 12px;
+        }
+        #cookies .help:hover + #cookies-help, #cookies .help:focus + #cookies-help { display: block; }
         #load-formats {
             align-self: flex-start;
             background: none;
@@ -182,6 +224,11 @@
                 </select>
             </label>
             <div id="output-warning">⚠ Changing the output format may require re-encoding the audio/video, which can be slow and lower the quality.</div>
+            <div id="cookies">
+                <label><input type="checkbox" id="use-cookies" aria-describedby="cookies-help" disabled>Use Cookies</label>
+                <span class="help" tabindex="0" aria-describedby="cookies-help">?</span>
+                <div id="cookies-help" role="tooltip">Download as the account you're signed in with on this site, by using your cookies for it.</div>
+            </div>
             <button id="load-formats" disabled>Load available formats</button>
         </div>
         <button id="start" disabled>Download</button>

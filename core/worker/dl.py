@@ -80,20 +80,19 @@ class FetchRH(RequestHandler):
 
     def _send(self, request: Request):
         """The browser sends the cookies, not yt-dlp: fetch can't set a Cookie header. It does so only
-        for requests to the page's origin, see python_fetch in worker.js. yt-dlp's cookie jar holds
-        the same cookies (the cookiefile option) so extractors can see them, but it isn't sent."""
+        for requests to the page's origin, and only with the panel's "Use Cookies" checked, see
+        python_fetch in worker.js. yt-dlp's cookie jar then holds the same cookies (the cookiefile
+        option, see _ydl_opts) so extractors can see them, but it isn't sent."""
         _check_cancelled()
         new_headers = {}
         proxy = False
-        # see the visionos notes below
-        anonymous = request.headers.get("X-YouTube-Client-Name") == VISIONOS_CLIENT_NAME
         NO_SET_HEADERS = ["accept-encoding", "cookie", "cookie2", "origin", "referer", "sec-fetch-mode", "user-agent"]
         # fetch can't set Origin or Referer, so requests that need them are sent from the page instead,
         # which gives them the page's. Some CDNs (e.g. bilibili's) refuse requests without a Referer.
         PROXY_INDICATOR_HEADERS = ["origin", "referer"]
         referrer = None
         for k, v in request.headers.items():
-            if k.lower() not in NO_SET_HEADERS and not (anonymous and k.lower() in YT_ACCOUNT_HEADERS):
+            if k.lower() not in NO_SET_HEADERS:
                 new_headers[k] = v
             if k.lower() in PROXY_INDICATOR_HEADERS:
                 proxy = True
@@ -111,8 +110,6 @@ class FetchRH(RequestHandler):
             "url": request.url,
             "headers": new_headers,
             "body": js_compat_body,
-            # never send the browser's cookies, even to the page's origin
-            "anonymous": anonymous,
             # seconds, like yt-dlp's own handlers: socket_timeout, unless the request sets its own
             "timeout": self._calculate_timeout(request),
         }
@@ -144,18 +141,6 @@ class FetchRH(RequestHandler):
         if not 200 <= res.status < 300:
             raise HTTPError(res)
         return res
-
-# YouTube: always use the visionos client. Signed in, yt-dlp would otherwise pick clients that
-# only get 360p here, and it skips visionos since that client doesn't support cookies. So visionos
-# is kept, and FetchRH sends its requests signed out instead: no cookies and no account headers,
-# just as yt-dlp does when it has no cookies.
-
-from yt_dlp.extractor.youtube._base import INNERTUBE_CLIENTS
-
-VISIONOS_CLIENT_NAME = str(INNERTUBE_CLIENTS['visionos']['INNERTUBE_CONTEXT_CLIENT_NAME'])
-INNERTUBE_CLIENTS['visionos']['SUPPORTS_COOKIES'] = True
-# what YoutubeBaseInfoExtractor._generate_cookie_auth_headers adds when signed in
-YT_ACCOUNT_HEADERS = ["authorization", "x-origin", "x-goog-authuser", "x-goog-pageid", "x-youtube-bootstrap-logged-in"]
 
 # JS Challenge
 
@@ -943,18 +928,32 @@ ydl_opts = {
     "_no_ytdl_file": True,
     # a video opened from a playlist (e.g. YouTube's watch?v=...&list=...) is the video, not the playlist
     "noplaylist": True,
-    "cookiefile": "/cookies.txt", # the page's cookies, written by the worker before each call below
     "progress_hooks": [progress_hook],
     "retries": 10,
     "fragment_retries": 10,
     "file_access_retries": 3
 }
 
+COOKIE_FILE = "/cookies.txt"
+
+# The YouTube client yt-dlp emulates, by whether "Use Cookies" is checked. visionos gets the best
+# formats signed out, but yt-dlp skips it with cookies, as it doesn't support them. Of the clients
+# yt-dlp picks signed in instead, tv_downgraded fails here and web only gets 360p, so web_embedded.
+YT_PLAYER_CLIENT = {False: "visionos", True: "web_embedded"}
+
+def _ydl_opts(use_cookies):
+    """ydl_opts for one call, with the page's cookies or without any"""
+    return ydl_opts | {
+        "cookiefile": COOKIE_FILE if use_cookies else None,
+        "extractor_args": {"youtube": {"player_client": [YT_PLAYER_CLIENT[use_cookies]]}},
+    }
+
 # This file is only run once per session; the functions below are called by the worker
 
-def list_formats():
-    """Extract the current page and return its formats for the UI"""
-    with BrowserYDL(ydl_opts) as ydl:
+def list_formats(use_cookies=False):
+    """Extract the current page and return its formats for the UI. `use_cookies` is the panel's
+    "Use Cookies", as for download()"""
+    with BrowserYDL(_ydl_opts(use_cookies)) as ydl:
         info = ydl.extract_info(run_sync(js.cur_url()), download=False, process=True)
     formats = []
     for fmt in info.get("formats") or []:
@@ -972,13 +971,14 @@ def list_formats():
         })
     return formats
 
-def download(fmt=None, output=None, only=None):
-    """Download the current page. `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
+def download(use_cookies=False, fmt=None, output=None, only=None):
+    """Download the current page. `use_cookies` is the panel's "Use Cookies": whether yt-dlp gets
+    the page's cookies (see _ydl_opts). `fmt` is a yt-dlp format selector; empty means yt-dlp's default.
     `output` is the container extension to end up with; empty keeps whatever yt-dlp picks.
     `only` is "audio" or "video" to drop the other track if the downloaded format has both"""
     # the worker deletes the store dir after each download, so get a fresh handle
     dir_store._dir = OPFSStore.open(STORE_DIR)._dir
-    opts = dict(ydl_opts)
+    opts = _ydl_opts(use_cookies)
     if fmt:
         opts["format"] = fmt
     audio_codec = next((k for k, (ext, _) in AUDIO_TARGETS.items() if ext == output), None)

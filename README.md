@@ -16,15 +16,8 @@ AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% loc
 - **Format and quality picker**: choose exactly which stream you want.
 - **Convert to any output format**: powered by [Mediabunny][mediabunny], which is bundled with the extension and handles the muxing and conversion work you would normally use ffmpeg for.
 - **Audio-only downloads**: save just the audio track.
-- **Logged-in downloads**: uses the cookies from your existing browser sessions, so content you can access while signed in is content you can download.
-## How it works
- 
-AnyDownload runs yt-dlp inside the extension using [Pyodide][pyodide] (CPython compiled to WebAssembly). Media processing (merging streams, remuxing, converting formats) is done by Mediabunny, also bundled in the extension. Nothing leaves your browser except the requests to the sites you are downloading from.
- 
-**Large files.** WebAssembly is limited to 4 GB of memory. AnyDownload gets around this by using the [Origin Private File System (OPFS)](https://developer.mozilla.org/docs/Web/API/File_System_API/Origin_private_file_system) for storage instead of holding everything in memory.
- 
-**YouTube.** YouTube requires solving a JavaScript challenge. AnyDownload executes it in a sandbox.
- 
+- **Logged-in downloads**: check **Use Cookies** to use the cookies from your existing browser session, so content you can access while signed in is content you can download.
+
 ## Installation
  
 ### Firefox
@@ -55,7 +48,14 @@ version number at the bottom of the panel. Pre-releases are never offered.
 
 Version 1.0.0 doesn't check for updates, so update it by hand the same way: replace its files, then click the reload
 button on its card in `chrome://extensions`.
-
+## How it works
+ 
+AnyDownload runs yt-dlp inside the extension using [Pyodide][pyodide] (CPython compiled to WebAssembly). Media processing (merging streams, remuxing, converting formats) is done by Mediabunny, also bundled in the extension. Nothing leaves your browser except the requests to the sites you are downloading from.
+ 
+**Large files.** WebAssembly is limited to 4 GB of memory. AnyDownload gets around this by using the [Origin Private File System (OPFS)](https://developer.mozilla.org/docs/Web/API/File_System_API/Origin_private_file_system) for storage instead of holding everything in memory.
+ 
+**YouTube.** YouTube requires solving a JavaScript challenge. AnyDownload executes it in a sandbox.
+ 
 ## Limitations
  
 - **No DRM-protected content.** AnyDownload cannot download media protected by DRM.

@@ -10,7 +10,7 @@
   },
   "manifest_version": 3,
   "name": "AnyDownload",
-  "description": "Download videos from anywhere you can name with the power of yt-dlp, now fully in the browser.",
+  "description": "Download media from almost any site, entirely inside your browser.",
   "version": "1.1.0",
   "minimum_chrome_version": "137",
   "action": {

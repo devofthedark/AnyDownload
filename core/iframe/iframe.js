@@ -13,6 +13,7 @@ const audioSel = document.getElementById('audio-format');
 const loadFormatsBtn = document.getElementById('load-formats');
 const outputSel = document.getElementById('output-format');
 const outputWarning = document.getElementById('output-warning');
+const cookiesBox = document.getElementById('use-cookies');
 const memoryNote = document.getElementById('memory-note');
 document.getElementById('version').textContent = `v${chrome.runtime.getManifest().version}`;
 const NS = 'ytx';
@@ -185,8 +186,23 @@ function updateStartEnabled() {
 videoSel.addEventListener('change', updateStartEnabled);
 audioSel.addEventListener('change', updateStartEnabled);
 
-// formats are only loaded once per panel
+// formats are only loaded once per panel, unless "Use Cookies" changes
 let formatsLoaded = false;
+
+// What's on offer depends on the cookies (on YouTube even the client asked differs, see dl.py), so the
+// formats loaded before don't count any more and can be loaded again
+cookiesBox.addEventListener('change', () => {
+    if (!formatsLoaded) return;
+    formatsLoaded = false;
+    formatsById = new Map();
+    // a loaded format that was picked goes back to "default"
+    fillSelect(videoSel, [], videoLabel);
+    fillSelect(audioSel, [], audioLabel);
+    loadFormatsBtn.textContent = 'Load available formats';
+    loadFormatsBtn.disabled = false;
+    fillOutputs();
+    updateStartEnabled();
+});
 
 // While the worker loads formats or downloads, the choices are locked and Cancel takes Download's place
 function setBusy(busy) {
@@ -194,7 +210,7 @@ function setBusy(busy) {
     cancelBtn.hidden = !busy;
     cancelBtn.disabled = false;
     cancelBtn.textContent = 'Cancel';
-    for (const el of [videoSel, audioSel, outputSel]) el.disabled = busy;
+    for (const el of [videoSel, audioSel, outputSel, cookiesBox]) el.disabled = busy;
     loadFormatsBtn.disabled = busy || formatsLoaded;
     updateStartEnabled();
 }
@@ -227,7 +243,7 @@ loadFormatsBtn.addEventListener('click', async () => {
     statusEl.textContent = 'Loading formats…';
     try {
         // a playlist fails here, as it does for Download (see PlaylistNotSupported in dl.py)
-        const formats = await workerJob('formats', {});
+        const formats = await workerJob('formats', { cookies: cookiesBox.checked });
         formatsLoaded = true;
         loadFormatsBtn.disabled = true;
         formatsById = new Map(formats.map((f) => [f.id, f]));
@@ -256,7 +272,7 @@ function fail(message) {
     worker.terminate();
     startBtn.hidden = false;
     cancelBtn.hidden = true;
-    for (const el of [startBtn, videoSel, audioSel, outputSel, loadFormatsBtn]) el.disabled = true;
+    for (const el of [startBtn, videoSel, audioSel, outputSel, cookiesBox, loadFormatsBtn]) el.disabled = true;
     progressWrap.classList.remove('active');
     statusEl.textContent = `Error: ${message.replace(/\.$/, '')}. Close this panel and open it again to retry.`;
 }
@@ -344,7 +360,9 @@ startBtn.addEventListener('click', async () => {
     statusEl.textContent = 'Starting download…';
     const output = outputSel.value === 'default' ? undefined : outputSel.value;
     try {
-        const saved = await workerJob('start', { format: formatSelector(), output, only: onlyTrack() });
+        const saved = await workerJob('start', {
+            cookies: cookiesBox.checked, format: formatSelector(), output, only: onlyTrack(),
+        });
         statusEl.textContent = `Finished, saved ${saved.length} file${saved.length === 1 ? '' : 's'}`;
     } catch (e) {
         if (failure) return;

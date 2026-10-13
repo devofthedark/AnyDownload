@@ -103,14 +103,14 @@ async function mint_potoken(content_binding, mint_cold_start_token, mint_error_t
 // script they're first-party. This worker sits inside the extension's frame, so the browser never
 // sends it any, and the page's cross-site requests are third-party, which get blocked.
 // `proxy` asks for the page's Origin/Referer, which also means sending it from the content script.
-// `request.anonymous` requests never get cookies.
+// Without the panel's "Use Cookies" (see readPage), no request gets cookies, even to the page's origin.
 // Gives up like the page's fetch does after `request.timeout` seconds without a response (see
 // proxyfetch in content.js). The result's abortRequest() ends the request, body and all.
 async function send(request, proxy, signal) {
     const sameOrigin = new URL(request.url).origin === pageOrigin;
     if (sameOrigin || proxy) {
         await worker.waitForLink("content");
-        const credentials = sameOrigin && !request.anonymous ? "include" : "omit";
+        const credentials = sameOrigin && useCookies ? "include" : "omit";
         try {
             const response = await worker.call("content", "proxyfetch", { ...request, credentials }, { signal });
             // cancelling the body here doesn't get back to the page's request (see openFetches there)
@@ -180,10 +180,17 @@ async function python_fetch(request, proxy) {
 
 // The page the panel is open on and its cookies, re-read before every operation: the page can
 // navigate without a reload (e.g. YouTube), and the user can sign in after opening the panel.
-let pageUrl, pageOrigin;
-async function readPage() {
+// `cookies` is the panel's "Use Cookies". Without it the site's cookies aren't read at all, nor sent
+// (see send()), and yt-dlp is left without the ones an earlier operation read.
+let pageUrl, pageOrigin, useCookies = false;
+async function readPage(cookies) {
     pageUrl = await worker.call("content", "cur_url", {});
     pageOrigin = new URL(pageUrl).origin;
+    useCookies = cookies;
+    if (!cookies) {
+        if (pyodide.FS.analyzePath("/cookies.txt").exists) pyodide.FS.unlink("/cookies.txt");
+        return;
+    }
     set_status("Reading this site's cookies…");
     // yt-dlp loads this (the cookiefile option) to see what the browser sends, e.g. that you're signed in
     pyodide.FS.writeFile("/cookies.txt", await worker.call("content", "cookies", {}));
@@ -335,14 +342,15 @@ async function runPython(code) {
     return value;
 }
 
-async function listFormats() {
-    await readPage();
+async function listFormats(cookies) {
+    await readPage(cookies);
+    pyodide.globals.set("_web_cookies", cookies);
     set_status("Extracting video info from this page…");
-    return await runPython("run_for_worker('list_formats')");
+    return await runPython("run_for_worker('list_formats', _web_cookies)");
 }
 
-async function runDownload(format, output, only) {
-    await readPage();
+async function runDownload(cookies, format, output, only) {
+    await readPage(cookies);
     const { root, inMemory } = await storage;
     // Clear out the previous download's files here rather than right after handing them
     // off: the browser reads the blob lazily, so deleting the OPFS file too early can
@@ -350,11 +358,12 @@ async function runDownload(format, output, only) {
     await root.removeEntry(STORE_DIR, { recursive: true }).catch(() => {});
     let handedOff = false;
     try {
+        pyodide.globals.set("_web_cookies", cookies);
         pyodide.globals.set("_web_format", format || "");
         pyodide.globals.set("_web_output", output || "");
         pyodide.globals.set("_web_only", only || "");
         set_status("Extracting video info from this page…");
-        await runPython("run_for_worker('download', _web_format, _web_output, _web_only)");
+        await runPython("run_for_worker('download', _web_cookies, _web_format, _web_output, _web_only)");
         handedOff = true;
         const store = await root.getDirectoryHandle(STORE_DIR);
         const saved = [];
@@ -374,12 +383,13 @@ async function runDownload(format, output, only) {
     }
 }
 
-worker.handle("formats", async () => {
-    return await runJob(listFormats);
+// `cookies` is the panel's "Use Cookies", off unless it says otherwise
+worker.handle("formats", async ({ cookies } = {}) => {
+    return await runJob(() => listFormats(cookies === true));
 });
 
-worker.handle("start", async ({ format, output, only } = {}) => {
-    return await runJob(() => runDownload(format, output, only));
+worker.handle("start", async ({ cookies, format, output, only } = {}) => {
+    return await runJob(() => runDownload(cookies === true, format, output, only));
 });
 
 // the panel's Cancel button
