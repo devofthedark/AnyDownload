@@ -5,7 +5,8 @@
 // the keys its browser understands, so the store linters don't flag the other browser's keys.
 // chrome is the Chromium build that's loaded unpacked, with the update checker in updater/ added.
 // firefox gets the panel's notice for when it has no access to websites, in firefox/.
-// edge-store is the Chromium build with the changes Edge Add-ons needs on top.
+// edge-store is the Chromium build with the changes Edge Add-ons needs on top, opera-store the same for Opera.
+// The store builds (all but chrome) get the panel's notice that the store has updated them, in whatsnew/.
 //
 // Usage: npm run package   (needs `zip` on the PATH, and libs/ from `npm install`)
 
@@ -56,6 +57,21 @@ function chromeWithUpdater(manifest) {
     chromium(manifest);
     // background.js, then the update checks
     manifest.background.service_worker = 'updater/service-worker.js';
+}
+
+// A store updates its builds itself, without a word, so their panel says when it has and links to what
+// changed, from GitHub's release notes (see whatsnew/).
+function addWhatsNew(dir, files) {
+    files.push(...copy('whatsnew', dir));
+    const script = '<script src="iframe.js"></script>';
+    patch(path.join(dir, 'core/iframe/iframe.html'), script,
+        `${script}\n    <script src="/whatsnew/panel.js"></script>`);
+}
+
+function chromiumWithWhatsNew(manifest) {
+    chromium(manifest);
+    // background.js, then the note of updates
+    manifest.background.service_worker = 'whatsnew/service-worker.js';
 }
 
 // Firefox lets the user turn host_permissions off, which Chrome doesn't, so that build's panel says when
@@ -122,26 +138,36 @@ function renameDlPy(dir, files) {
 // manifest: trims the manifest for the target's browser, files: changes to the copied files, if any
 const TARGETS = {
     chrome: { manifest: chromeWithUpdater, files: addUpdater },
-    'edge-store': { manifest: chromium, files: renameStdlib },
+    'edge-store': {
+        manifest: chromiumWithWhatsNew,
+        files(dir, files) {
+            renameStdlib(dir, files);
+            addWhatsNew(dir, files);
+        },
+    },
     'opera-store': {
-        manifest: chromium,
+        manifest: chromiumWithWhatsNew,
         files(dir, files) {
             renameStdlib(dir, files, '.wasm');
             renameWheels(dir, files); // Opera whyyyyy
             renameDlPy(dir, files);
+            addWhatsNew(dir, files);
         },
     },
     firefox: {
         manifest(manifest) {
             // Firefox runs background.scripts as an event page and ignores service_worker
             manifest.background = { scripts: manifest.background.scripts };
-            // tells the panel whether it has access to websites, see addSiteAccess
-            manifest.background.scripts.push('firefox/background.js');
+            // tells the panel whether it has access to websites, see addSiteAccess, and notes updates, see addWhatsNew
+            manifest.background.scripts.push('firefox/background.js', 'whatsnew/background.js');
             // Chrome's and Edge's (their versions match): 137 is the first with JSPI (WebAssembly.Suspending),
             // which Pyodide's run_sync needs. Firefox's minimum is in browser_specific_settings.
             delete manifest.minimum_chrome_version;
         },
-        files: addSiteAccess,
+        files(dir, files) {
+            addSiteAccess(dir, files);
+            addWhatsNew(dir, files);
+        },
     },
 };
 
@@ -216,6 +242,10 @@ for (const [target, adapt] of Object.entries(TARGETS)) {
     }
     if (target !== 'firefox' && files.some((file) => file.startsWith('firefox/'))) {
         throw new Error(`the ${target} build mustn't include the firefox notice`);
+    }
+    // it has the update checker's notice instead
+    if (target === 'chrome' && files.some((file) => file.startsWith('whatsnew/'))) {
+        throw new Error(`the ${target} build mustn't include the store builds' update notice`);
     }
 
     const manifest = structuredClone(base);

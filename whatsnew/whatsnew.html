@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>What's New in AnyDownload</title>
+    <link rel="icon" type="image/svg+xml" href="/logo/icon.svg">
+    <link rel="stylesheet" href="/pages/pages.css">
+    <style>
+        :root { --error: #d93025; --code: #f1f3f4; }
+        @media (prefers-color-scheme: dark) {
+            :root { --error: #f28b82; --code: #2b2d31; }
+        }
+        .error { color: var(--error); }
+        .notes {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 4px 16px;
+            font-size: 14px;
+            overflow-wrap: anywhere;
+        }
+        .notes h1, .notes h2, .notes h3, .notes h4, .notes h5, .notes h6 { font-size: 15px; margin: 16px 0 6px; }
+        .notes code {
+            font-size: 13px;
+            background: var(--code);
+            border-radius: 4px;
+            padding: 1px 4px;
+        }
+        .notes pre {
+            background: var(--code);
+            border-radius: 6px;
+            padding: 8px 12px;
+            overflow-x: auto;
+        }
+        .notes pre code { padding: 0; }
+        .notes blockquote {
+            margin: 0;
+            padding-left: 12px;
+            border-left: 3px solid var(--border);
+            color: var(--muted);
+        }
+        .notes table { border-collapse: collapse; }
+        .notes th, .notes td { border: 1px solid var(--border); padding: 4px 8px; }
+    </style>
+</head>
+<body>
+    <main>
+        <header>
+            <img src="/logo/icon.svg" alt="">
+            <h1>What's New in AnyDownload</h1>
+        </header>
+
+        <p id="summary"></p>
+        <p id="status" class="muted">Getting the release notes from GitHub…</p>
+        <div id="releases"></div>
+
+        <p class="muted"><a href="https://github.com/devofthedark/AnyDownload/releases" target="_blank"
+            rel="noopener">All releases on GitHub</a></p>
+        <p class="muted">The release notes come from AnyDownload's page on GitHub (api.github.com). Like any request,
+            that shows GitHub your IP address; nothing about you or your downloads is sent.</p>
+    </main>
+    <script src="whatsnew.js"></script>
+</body>
+</html>
