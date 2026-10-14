@@ -13,14 +13,10 @@
         }
         .ok { color: var(--ok); }
         .error { color: var(--error); }
+        /* see pages.css */
         .notes {
-            white-space: pre-wrap;
             max-height: 260px;
             overflow-y: auto;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px 14px;
-            font-size: 14px;
         }
         progress { width: 100%; margin-top: 12px; }
         li .actions { margin: 8px 0 4px; }
@@ -86,6 +82,7 @@
         <p class="muted">You have version <span id="current"></span>.</p>
     </main>
     <script src="check.js"></script>
+    <script src="/pages/release-notes.js"></script>
     <script src="update.js"></script>
 </body>
 </html>

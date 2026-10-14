@@ -59,7 +59,8 @@
         return {
             version,
             page: release.html_url?.startsWith(`${RELEASES_PAGE}/`) ? release.html_url : RELEASES_PAGE,
-            notes: release.body ?? '',
+            // the notes' Markdown as GitHub renders it, see pages/release-notes.js
+            notesHtml: release.body_html ?? '',
             published: release.published_at,
             // without one the update page links to the release instead
             asset: asset ? {
@@ -90,7 +91,8 @@
 
         const state = { ...last, checkedAt: now, nextCheck: now + CHECK_EVERY, error: null };
         try {
-            const headers = { Accept: 'application/vnd.github+json' };
+            // with the release's notes rendered, as body_html
+            const headers = { Accept: 'application/vnd.github.html+json' };
             // GitHub doesn't count an "unchanged" answer against its rate limit
             if (last.etag) headers['If-None-Match'] = last.etag;
             const res = await fetch(LATEST_URL, {

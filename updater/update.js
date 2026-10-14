@@ -33,9 +33,7 @@ function showRelease() {
     const date = release.published && new Date(release.published).toLocaleDateString(undefined, { dateStyle: 'long' });
     $('release-date').textContent = date ? `Released ${date} ·` : '';
     $('release-page').href = release.page;
-    const notes = release.notes.trim();
-    $('notes').textContent = notes;
-    $('notes').hidden = !notes;
+    ReleaseNotes.show($('notes'), release.notesHtml, release.page);
     $('zip-name').textContent = release.asset?.name ?? '';
     downloadBtn.hidden = !release.asset;
     if (!release.asset) downloadStatus.textContent = 'This release has no Chrome zip to download here. Get it from its release page.';

@@ -5,6 +5,7 @@
     --muted: #5f6368;
     --border: #dadce0;
     --accent: #3b82f6;
+    --code: #f1f3f4;
 }
 @media (prefers-color-scheme: dark) {
     :root {
@@ -13,6 +14,7 @@
         --muted: #aaa;
         --border: #333;
         --accent: #6ea1f8;
+        --code: #2b2d31;
     }
 }
 * { box-sizing: border-box; }
@@ -70,3 +72,34 @@ button.primary {
 }
 button:disabled { opacity: .5; cursor: default; }
 [hidden] { display: none !important; }
+
+/* a release's notes, see release-notes.js */
+.notes {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 4px 16px;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+}
+.notes h1, .notes h2, .notes h3, .notes h4, .notes h5, .notes h6 { font-size: 15px; margin: 16px 0 6px; }
+.notes code {
+    font-size: 13px;
+    background: var(--code);
+    border-radius: 4px;
+    padding: 1px 4px;
+}
+.notes pre {
+    background: var(--code);
+    border-radius: 6px;
+    padding: 8px 12px;
+    overflow-x: auto;
+}
+.notes pre code { padding: 0; }
+.notes blockquote {
+    margin: 0;
+    padding-left: 12px;
+    border-left: 3px solid var(--border);
+    color: var(--muted);
+}
+.notes table { border-collapse: collapse; }
+.notes th, .notes td { border: 1px solid var(--border); padding: 4px 8px; }

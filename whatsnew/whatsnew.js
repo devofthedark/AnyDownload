@@ -38,56 +38,13 @@ function brought(release) {
 
 async function fetchReleases() {
     const res = await fetch(RELEASES_URL, {
-        // with each release's Markdown rendered by GitHub, as body_html
+        // with each release's Markdown rendered by GitHub, as body_html (see pages/release-notes.js)
         headers: { Accept: 'application/vnd.github.html+json' },
         credentials: 'omit',
         signal: AbortSignal.timeout(TIMEOUT),
     });
     if (!res.ok) throw new Error(`GitHub answered with HTTP ${res.status}`);
     return res.json();
-}
-
-// What GitHub made of the notes is rebuilt from their text, the tags below and links to web pages,
-// rather than trusting its HTML: anything else is dropped, keeping what's inside it. Nothing in it is
-// loaded or run, as DOMParser's documents never do.
-const KEEP = new Set(['p', 'div', 'br', 'hr', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'strong', 'b',
-    'em', 'i', 'del', 's', 'code', 'pre', 'kbd', 'sup', 'sub', 'blockquote', 'details', 'summary', 'table', 'thead',
-    'tbody', 'tr', 'th', 'td', 'a']);
-// dropped along with what's inside them
-const SKIP = new Set(['script', 'style', 'template', 'noscript', 'svg']);
-
-// `base`: the release's page, which the notes' own relative links (e.g. to a heading) are relative to
-function rebuild(source, into, base) {
-    for (const node of source.childNodes) {
-        if (node.nodeType === Node.TEXT_NODE) {
-            into.append(node.data);
-            continue;
-        }
-        if (node.nodeType !== Node.ELEMENT_NODE || SKIP.has(node.localName)) continue;
-        const name = node.localName;
-        // GitHub links an image to itself, so the link is left, saying what the image was
-        if (name === 'img') {
-            into.append(node.getAttribute('alt') ?? '');
-            continue;
-        }
-        const url = name === 'a' && URL.parse(node.getAttribute('href') ?? '', base);
-        if (!KEEP.has(name) || (name === 'a' && !/^https?:$/.test(url?.protocol))) {
-            rebuild(node, into, base);
-            continue;
-        }
-        const el = document.createElement(name);
-        if (name === 'a') {
-            el.href = url.href;
-            el.target = '_blank';
-            el.rel = 'noopener';
-        }
-        const start = node.getAttribute('start');
-        if (name === 'ol' && /^\d+$/.test(start ?? '')) el.start = Number(start);
-        rebuild(node, el, base);
-        // e.g. a heading's anchor, which is only an icon
-        if (name === 'a' && !el.textContent.trim()) continue;
-        into.append(el);
-    }
 }
 
 function showRelease(release) {
@@ -108,8 +65,8 @@ function showRelease(release) {
 
     const notes = document.createElement('div');
     notes.className = 'notes';
-    rebuild(new DOMParser().parseFromString(release.body_html ?? '', 'text/html').body, notes, page.href);
-    if (notes.textContent.trim()) section.append(notes);
+    ReleaseNotes.show(notes, release.body_html, page.href);
+    section.append(notes);
     $('releases').append(section);
 }
 
