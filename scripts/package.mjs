@@ -1,23 +1,26 @@
 // Builds the store packages:
 //   dist/chrome/, dist/edge-store/, dist/firefox/   unpacked builds, for loading into the browser to test
 //   dist/anydownload-<version>-<target>.zip         what gets uploaded to each store
-// manifest.json in the repo works unpacked in both browsers; each build gets a copy trimmed to
+// src/manifest.json works unpacked in both browsers; each build gets a copy trimmed to
 // the keys its browser understands, so the store linters don't flag the other browser's keys.
 // chrome is the Chromium build that's loaded unpacked, with the update checker in updater/ added.
 // firefox gets the panel's notice for when it has no access to websites, in firefox/.
 // edge-store is the Chromium build with the changes Edge Add-ons needs on top, opera-store the same for Opera.
 // The store builds (all but chrome) get the panel's notice that the store has updated them, in whatsnew/.
 //
-// Usage: npm run package   (needs `zip` on the PATH, and libs/ from `npm install`)
+// Usage: npm run package   (needs `zip` on the PATH, and src/libs/ from `npm install`)
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
 const ROOT = path.join(import.meta.dirname, '..');
+const SRC = path.join(ROOT, 'src');
 const DIST = path.join(ROOT, 'dist');
-// everything the extension loads at runtime; the rest of the repo is build tooling
-const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs', 'LICENSE.txt', 'THIRD_PARTY_LICENSES.txt'];
+// everything the extension loads at runtime, from src/; the rest of the repo is build tooling
+const FILES = ['background.js', 'rpc.js', 'core', 'pages', 'logo', 'libs'];
+// shipped too, but kept at the top of the repo, where GitHub looks for them
+const LICENSES = ['LICENSE.txt', 'THIRD_PARTY_LICENSES.txt'];
 const JUNK = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 // zip stores timestamps, so give every file the same one to make rebuilds byte-identical
 const MTIME = new Date('2020-01-01T00:00:00Z');
@@ -173,8 +176,8 @@ const TARGETS = {
 
 // libs/ is generated, so make sure it was built from the pins currently in the repo
 function checkLibs() {
-    const vendorFile = path.join(ROOT, 'libs', 'vendor.js');
-    if (!fs.existsSync(vendorFile)) throw new Error('libs/ is missing. Run `npm install` first.');
+    const vendorFile = path.join(SRC, 'libs', 'vendor.js');
+    if (!fs.existsSync(vendorFile)) throw new Error('src/libs/ is missing. Run `npm install` first.');
     const { versions, stdlib } = readVendor(vendorFile);
     if (!stdlib) throw new Error('libs/vendor.js is out of date. Run `npm run vendor`.');
     const wanted = { ...readJson(path.join(ROOT, 'package.json')).dependencies };
@@ -197,13 +200,13 @@ function checkLicenses(vendored) {
     if (missing.length) throw new Error(`THIRD_PARTY_LICENSES.txt doesn't mention ${missing.join(', ')}. Add their licenses to it.`);
 }
 
-// copies `rel` from the repo into `dir`, returning the files copied as zip paths
-function copy(rel, dir) {
-    const from = path.join(ROOT, rel);
+// copies `rel` from src/ (or `base`) into `dir`, returning the files copied as zip paths
+function copy(rel, dir, base = SRC) {
+    const from = path.join(base, rel);
     if (fs.statSync(from).isDirectory()) {
         return fs.readdirSync(from)
             .filter((name) => !JUNK.has(name))
-            .flatMap((name) => copy(path.join(rel, name), dir));
+            .flatMap((name) => copy(path.join(rel, name), dir, base));
     }
     const to = path.join(dir, rel);
     fs.mkdirSync(path.dirname(to), { recursive: true });
@@ -229,12 +232,12 @@ function zip(dir, files, out) {
 }
 
 checkLicenses(checkLibs());
-const base = readJson(path.join(ROOT, 'manifest.json'));
+const base = readJson(path.join(SRC, 'manifest.json'));
 fs.rmSync(DIST, { recursive: true, force: true });
 
 for (const [target, adapt] of Object.entries(TARGETS)) {
     const dir = path.join(DIST, target);
-    const files = FILES.flatMap((rel) => copy(rel, dir));
+    const files = [...FILES.flatMap((rel) => copy(rel, dir)), ...LICENSES.flatMap((rel) => copy(rel, dir, ROOT))];
     adapt.files?.(dir, files);
     // a store build offering GitHub's zip would install a second, unpacked copy next to the store's
     if (target !== 'chrome' && files.some((file) => file.startsWith('updater/'))) {

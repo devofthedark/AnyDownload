@@ -1,6 +1,6 @@
 <h1 align="center">
 <sub>
-<img src="https://raw.githubusercontent.com/devofthedark/AnyDownload/refs/heads/main/logo/icon.svg" height="38", width="38">
+<img src="https://raw.githubusercontent.com/devofthedark/AnyDownload/refs/heads/main/src/logo/icon.svg" height="38", width="38">
 </sub>
 AnyDownload
 </h1>
@@ -90,9 +90,9 @@ npm run package
 This writes `dist/anydownload-<version>-chrome.zip`, `dist/anydownload-<version>-edge-store.zip` and
 `dist/anydownload-<version>-firefox.zip`, plus unpacked copies in `dist/chrome/`, `dist/edge-store/` and `dist/firefox/`
 for loading into the browser. The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
-rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `updater/`), as the
+rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `src/updater/`), as the
 browser updates store installs itself. Only the `firefox` build has the panel's notice for when Firefox hasn't given
-AnyDownload access to websites (in `firefox/`).
+AnyDownload access to websites (in `src/firefox/`).
 
 ## Credits
 
