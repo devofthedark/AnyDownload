@@ -27,7 +27,7 @@ AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% loc
 | Microsoft Edge | Install from **[Edge Add-ons][edge-link]** |
 | Other Chromium-based (Chrome, Brave, etc.) | See instructions below |
 
-<a id="chromium-install"></a>
+<a name="chromium-install"></a>
 ### Chromium-based browsers (Chrome, Brave, etc.)
 
 1. Download `anydownload-<version>-chrome.zip` from the [releases][Releases] page.
@@ -35,6 +35,11 @@ AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% loc
 3. Go to `chrome://extensions` and toggle on `Developer Mode` at the top right corner.
 4. Click on `Load unpacked` at the top left corner.
 5. Select the folder where you extracted the zip file to.
+
+> [!WARNING]
+> Make sure you download the file ending with `-chrome.zip`, not `-chrome-store.zip`. The `chrome-store` version is intended
+> for release on the Chrome Web Store and as thus does not have all the features of the `chrome` version, namely
+> automatic updates and downloading from YouTube.
 
 #### Updating
 
@@ -48,10 +53,7 @@ one. Click `Update` to download it, then follow the steps on the page that opens
 
 Replacing the files keeps your settings. You can also remove AnyDownload and load the new folder instead, but then you
 have to accept the terms of use again. To check for updates yourself, or to turn the automatic checks off, click the
-version number at the bottom of the panel. Pre-releases are never offered.
-
-Version 1.0.0 doesn't check for updates, so update it by hand the same way: replace its files, then click the reload
-button on its card in `chrome://extensions`.
+version number at the bottom of the panel.
 
 ## How it works
  
