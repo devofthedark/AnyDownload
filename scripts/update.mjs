@@ -1,4 +1,4 @@
-// Bumps every dependency to its latest release, then rebuilds src/libs/.
+// Bumps every dependency to its latest release, then rebuilds libs/.
 //   npm packages in package.json      -> latest on npm (pinned exactly)
 //   wheels in requirements.txt        -> latest on PyPI (yt-dlp-ejs follows yt-dlp's pin)
 //
