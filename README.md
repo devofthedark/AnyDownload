@@ -92,7 +92,8 @@ This writes `dist/anydownload-<version>-<target>.zip` for the `chrome`, `chrome-
 and `firefox` targets, plus an unpacked copy of each in `dist/<target>/` for loading into the browser. The
 `chrome-store` build is the Chromium build for the Chrome Web Store, with the panel's notice that the browser has
 updated AnyDownload (in `src/whatsnew/`) in place of the update checker. As the Chrome Web Store doesn't allow
-downloading from YouTube, on YouTube that build shows a notice saying so in place of the panel (in `src/chrome-store/`). The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
+downloading from YouTube, on YouTube that build shows a notice saying so in place of the panel, and refuses YouTube videos embedded in other
+sites (in `src/chrome-store/`). The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
 rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `src/updater/`), as the
 browser updates store installs itself. Only the `firefox` build has the panel's notice for when Firefox hasn't given
 AnyDownload access to websites (in `src/firefox/`).

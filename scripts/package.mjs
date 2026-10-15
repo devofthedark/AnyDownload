@@ -81,10 +81,14 @@ function chromiumWithWhatsNew(manifest) {
 
 // The Chrome Web Store doesn't allow downloading from YouTube, so there the panel doesn't open at all: the
 // notice in chrome-store/no-youtube.js says why instead. The background injects it ahead of content.js.
+// Elsewhere, the worker refuses YouTube videos embedded in or linked from the page (see no-youtube.py).
 function addNoYouTube(dir, files) {
     files.push(...copy('chrome-store', dir));
     patch(path.join(dir, 'background.js'), '"/core/content/content.js"]',
         '"/chrome-store/no-youtube.js", "/core/content/content.js"]');
+    const dlPy = 'await pyodide.runPythonAsync(await (await fetch("/core/worker/dl.py")).text())';
+    patch(path.join(dir, 'core/worker/worker.js'), dlPy,
+        `${dlPy}\n    await pyodide.runPythonAsync(await (await fetch("/chrome-store/no-youtube.py")).text())`);
 }
 
 function chromeStore(manifest) {
