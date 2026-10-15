@@ -26,7 +26,8 @@ AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% loc
 | Firefox | Install from **[Firefox Add-ons][amo-link]** |
 | Microsoft Edge | Install from **[Edge Add-ons][edge-link]** |
 | Other Chromium-based (Chrome, Brave, etc.) | See instructions below |
- 
+
+<a id="chromium-install"></a>
 ### Chromium-based browsers (Chrome, Brave, etc.)
 
 1. Download `anydownload-<version>-chrome.zip` from the [releases][Releases] page.
@@ -87,9 +88,11 @@ To build the store packages (needs `zip` installed on PATH):
 npm run package
 ```
 
-This writes `dist/anydownload-<version>-chrome.zip`, `dist/anydownload-<version>-edge-store.zip` and
-`dist/anydownload-<version>-firefox.zip`, plus unpacked copies in `dist/chrome/`, `dist/edge-store/` and `dist/firefox/`
-for loading into the browser. The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
+This writes `dist/anydownload-<version>-<target>.zip` for the `chrome`, `chrome-store`, `edge-store`, `opera-store`
+and `firefox` targets, plus an unpacked copy of each in `dist/<target>/` for loading into the browser. The
+`chrome-store` build is the Chromium build for the Chrome Web Store, with the panel's notice that the browser has
+updated AnyDownload (in `src/whatsnew/`) in place of the update checker. As the Chrome Web Store doesn't allow
+downloading from YouTube, on YouTube that build shows a notice saying so in place of the panel (in `src/chrome-store/`). The `edge-store` build is the Chromium build adjusted for the Edge Add-ons store, which
 rejects packages that contain a `.zip` file. Only the `chrome` build has the update checker (in `src/updater/`), as the
 browser updates store installs itself. Only the `firefox` build has the panel's notice for when Firefox hasn't given
 AnyDownload access to websites (in `src/firefox/`).

@@ -5,6 +5,8 @@
 // the keys its browser understands, so the store linters don't flag the other browser's keys.
 // chrome is the Chromium build that's loaded unpacked, with the update checker in updater/ added.
 // firefox gets the panel's notice for when it has no access to websites, in firefox/.
+// chrome-store is the Chromium build for the Chrome Web Store, which doesn't allow downloading from YouTube,
+// so on YouTube it shows a notice in place of the panel, in chrome-store/.
 // edge-store is the Chromium build with the changes Edge Add-ons needs on top, opera-store the same for Opera.
 // The store builds (all but chrome) get the panel's notice that the store has updated them, in whatsnew/.
 //
@@ -77,6 +79,20 @@ function chromiumWithWhatsNew(manifest) {
     manifest.background.service_worker = 'whatsnew/service-worker.js';
 }
 
+// The Chrome Web Store doesn't allow downloading from YouTube, so there the panel doesn't open at all: the
+// notice in chrome-store/no-youtube.js says why instead. The background injects it ahead of content.js.
+function addNoYouTube(dir, files) {
+    files.push(...copy('chrome-store', dir));
+    patch(path.join(dir, 'background.js'), '"/core/content/content.js"]',
+        '"/chrome-store/no-youtube.js", "/core/content/content.js"]');
+}
+
+function chromeStore(manifest) {
+    chromiumWithWhatsNew(manifest);
+    // the notice's logo, which it shows in the page itself
+    manifest.web_accessible_resources.push({ resources: ['logo/icon.svg'], matches: ['<all_urls>'] });
+}
+
 // Firefox lets the user turn host_permissions off, which Chrome doesn't, so that build's panel says when
 // they're off and links to a page that asks for them (see firefox/panel.js).
 function addSiteAccess(dir, files) {
@@ -141,6 +157,13 @@ function renameDlPy(dir, files) {
 // manifest: trims the manifest for the target's browser, files: changes to the copied files, if any
 const TARGETS = {
     chrome: { manifest: chromeWithUpdater, files: addUpdater },
+    'chrome-store': {
+        manifest: chromeStore,
+        files(dir, files) {
+            addWhatsNew(dir, files);
+            addNoYouTube(dir, files);
+        },
+    },
     'edge-store': {
         manifest: chromiumWithWhatsNew,
         files(dir, files) {
@@ -245,6 +268,9 @@ for (const [target, adapt] of Object.entries(TARGETS)) {
     }
     if (target !== 'firefox' && files.some((file) => file.startsWith('firefox/'))) {
         throw new Error(`the ${target} build mustn't include the firefox notice`);
+    }
+    if (target !== 'chrome-store' && files.some((file) => file.startsWith('chrome-store/'))) {
+        throw new Error(`the ${target} build mustn't refuse YouTube`);
     }
     // it has the update checker's notice instead
     if (target === 'chrome' && files.some((file) => file.startsWith('whatsnew/'))) {
