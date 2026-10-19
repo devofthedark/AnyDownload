@@ -152,6 +152,12 @@ function audioLabel(f) {
 function fillSelect(sel, formats, label) {
     // keep the "default" and "none" options, drop any previously loaded formats
     while (sel.options.length > 2) sel.remove(2);
+    // until formats are loaded, an unselectable hint says how to get them
+    if (!formatsLoaded) {
+        const hint = new Option('Click "Load available formats" to pick a quality');
+        hint.disabled = true;
+        sel.add(hint);
+    }
     // yt-dlp sorts worst -> best
     for (const f of [...formats].reverse()) {
         sel.add(new Option(label(f), f.id));
