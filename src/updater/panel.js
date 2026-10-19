@@ -13,8 +13,8 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 6px 10px;
-            background: #26272b;
-            border: 1px solid #333;
+            background: var(--surface);
+            border: 1px solid var(--border);
             border-radius: 6px;
             padding: 8px 10px;
             font-size: 12px;
@@ -22,7 +22,7 @@
         #update-notice.active { display: flex; }
         #update-notice span { flex: 1 1 100%; }
         #update-notice a {
-            background: #3b82f6;
+            background: var(--primary);
             color: #fff;
             border-radius: 6px;
             padding: 4px 10px;
@@ -31,12 +31,12 @@
         #update-notice button {
             background: none;
             border: none;
-            color: #aaa;
+            color: var(--muted);
             padding: 0;
             font-size: 12px;
             cursor: pointer;
         }
-        #update-notice button:hover { color: #fff; }
+        #update-notice button:hover { color: var(--fg-hover); }
     `;
     document.head.appendChild(style);
 

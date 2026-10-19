@@ -19,8 +19,8 @@
             flex-wrap: wrap;
             align-items: center;
             gap: 6px 10px;
-            background: #26272b;
-            border: 1px solid #f0b43c;
+            background: var(--surface);
+            border: 1px solid var(--warning);
             border-radius: 6px;
             padding: 8px 10px;
             font-size: 12px;
@@ -28,7 +28,7 @@
         #access-notice.active { display: flex; }
         #access-notice span { flex: 1 1 100%; }
         #access-notice a {
-            background: #3b82f6;
+            background: var(--primary);
             color: #fff;
             border-radius: 6px;
             padding: 4px 10px;

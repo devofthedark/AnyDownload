@@ -25,11 +25,35 @@
     const shadow = host.attachShadow({ mode: 'open' });
 
     const style = document.createElement('style');
+    // the panel's colors, light or dark as the browser is set (see iframe.html). They go on .notice: on :host,
+    // the page's own styles for its div would override them.
     style.textContent = `
         .notice {
+            --bg: #ffffff;
+            --fg: #1e1f22;
+            --fg-hover: #000000;
+            --muted: #5f6368;
+            --surface: #f1f3f4;
+            --border: #dadce0;
+            --button: #e8eaed;
+            --accent: #2563eb;
+        }
+        @media (prefers-color-scheme: dark) {
+            .notice {
+                --bg: #1e1f22;
+                --fg: #e8e8ea;
+                --fg-hover: #ffffff;
+                --muted: #aaa;
+                --surface: #26272b;
+                --border: #333;
+                --button: #3a3b3f;
+                --accent: #6ea1f8;
+            }
+        }
+        .notice {
             font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-            background: #1e1f22;
-            color: #e8e8ea;
+            background: var(--bg);
+            color: var(--fg);
             border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.35);
             overflow: hidden;
@@ -39,8 +63,8 @@
             align-items: center;
             justify-content: space-between;
             padding: 10px 12px;
-            background: #26272b;
-            border-bottom: 1px solid #333;
+            background: var(--surface);
+            border-bottom: 1px solid var(--border);
         }
         .title {
             display: flex;
@@ -60,7 +84,7 @@
         button {
             background: none;
             border: none;
-            color: #aaa;
+            color: var(--muted);
             font: inherit;
             font-size: 15px;
             line-height: 1;
@@ -68,9 +92,9 @@
             padding: 3px 7px;
             border-radius: 4px;
         }
-        button:hover { background: #3a3b3f; color: #fff; }
+        button:hover { background: var(--button); color: var(--fg-hover); }
         p { margin: 0; padding: 14px 12px; }
-        a { color: #6ea1f8; text-decoration: none; }
+        a { color: var(--accent); text-decoration: none; }
         a:hover { text-decoration: underline; }
     `;
 
