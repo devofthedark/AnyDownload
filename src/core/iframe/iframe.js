@@ -126,15 +126,18 @@ iframeNode.handle("ready", async ({ outputs, inMemory } = {}) => {
 const hasCodec = (c) => c != null && c !== 'none';
 let formatsById = new Map();
 
+// The labels leave out yt-dlp's format IDs, which mean nothing to people; each option's value is its ID
 function videoLabel(f) {
-    const parts = [f.height ? `${f.height}p` : (f.note || f.id)];
+    const parts = [];
+    if (f.height) parts.push(`${f.height}p`);
+    else if (f.note) parts.push(f.note);
     if (f.fps) parts.push(`${Math.round(f.fps)}fps`);
     parts.push(f.ext);
     if (hasCodec(f.vcodec)) parts.push(f.vcodec.split('.')[0]);
     if (hasCodec(f.acodec)) parts.push('+ audio');
     const size = formatBytes(f.filesize);
     if (size) parts.push(`~${size}`);
-    return `${parts.join(' ')} [${f.id}]`;
+    return parts.join(' ');
 }
 
 function audioLabel(f) {
@@ -146,7 +149,7 @@ function audioLabel(f) {
     if (f.note) parts.push(f.note);
     const size = formatBytes(f.filesize);
     if (size) parts.push(`~${size}`);
-    return `${parts.join(' ')} [${f.id}]`;
+    return parts.join(' ');
 }
 
 function fillSelect(sel, formats, label) {
