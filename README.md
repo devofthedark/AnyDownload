@@ -116,6 +116,6 @@ AnyDownload is licensed under the [GNU General Public License v3.0](LICENSE.txt)
 [Releases]: https://github.com/devofthedark/AnyDownload/releases
 [pyodide]: https://pyodide.org/
 [mediabunny]: https://github.com/Vanilagy/mediabunny
-[amo-link]: https://addons.mozilla.org/en-US/firefox/addon/anydownload
+[amo-link]: https://addons.mozilla.org/en-US/firefox/addon/anydownload?utm_source=github.com&utm_medium=readme&utm_content=readme-link&utm_campaign=github-readme
 [edge-link]: https://microsoftedge.microsoft.com/addons/detail/anydownload/icpkdhomdhnooolmlgipoiaejfoadcfb
 
