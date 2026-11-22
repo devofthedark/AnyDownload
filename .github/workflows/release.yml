@@ -1,0 +1,57 @@
+# Builds the extension for a version tag and attaches the zips to a draft release.
+#
+#   1. bump "version" in src/manifest.json and commit
+#   2. git tag <version> && git push origin <version>      (a bare version, e.g. 1.2.2)
+#   3. on GitHub, edit the draft's notes (the extension's update notices show them) and publish it
+#
+# The release is a draft until then so it never goes public without its zips: the chrome build's
+# update checker (src/updater/check.js) looks for anydownload-<version>-chrome.zip on the latest release.
+name: Release
+
+on:
+  push:
+    tags:
+      - "[0-9]+.[0-9]+.[0-9]+"
+      - "[0-9]+.[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check the tag matches the manifest
+        run: |
+          version=$(jq -r .version src/manifest.json)
+          if [ "$version" != "$TAG" ]; then
+            echo "::error::Tag $TAG doesn't match version $version in src/manifest.json"
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+
+      # postinstall runs scripts/vendor.mjs, which builds libs/ and downloads the wheels from PyPI
+      - run: npm ci
+
+      - run: npm run package
+
+      - name: Attach the zips to a draft release
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            # re-run, or a release made by hand for this tag: replace its zips
+            gh release upload "$TAG" dist/*.zip --clobber
+          else
+            gh release create "$TAG" dist/*.zip --draft --verify-tag --generate-notes --title "$TAG"
+          fi
