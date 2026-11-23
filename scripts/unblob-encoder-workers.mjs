@@ -42,15 +42,17 @@ export function unblobEncoderWorkers(dir, urlPrefix) {
             continue;
         }
         // async function inlineWorker(scriptText) { if (typeof Worker !== "undefined" && ...
-        // (or the minified `async function y(g){if(typeof Worker<"u"&&...`)
-        const factory = src.match(/async function (\w+)\(\w+\)\s*\{\s*if\s*\(typeof Worker\s*(?:<\s*"u"|!==?\s*"undefined")/);
+        // (or the minified `async function y(g){if(typeof Worker<"u"&&...`). Since Mediabunny 1.66 it
+        // takes a second argument, an object it caches the blob: URL in: inlineWorker(scriptText, cache2)
+        const factory = src.match(/async function (\w+)\(\w+(?:\s*,\s*\w+)?\)\s*\{\s*if\s*\(typeof Worker\s*(?:<\s*"u"|!==?\s*"undefined")/);
         if (!factory) throw new Error(`${codec}: blob worker factory not found`);
         const call = new RegExp(`return ${factory[1]}\\(\\s*(?=['"\`])`).exec(src);
         if (!call) throw new Error(`${codec}: found factory ${factory[1]} but not its call site`);
 
         const litStart = call.index + call[0].length;
         const literal = literalAt(src, litStart);
-        const callEnd = /^\s*\)/.exec(src.slice(litStart + literal.length));
+        // `)`, or `, cache)` since 1.66: the worker's own file needs no blob: URL cached
+        const callEnd = /^\s*(?:,\s*\w+\s*)?\)/.exec(src.slice(litStart + literal.length));
         if (!callEnd) throw new Error(`${codec}: unexpected call shape`);
         const workerSrc = vm.runInNewContext(literal);
 
