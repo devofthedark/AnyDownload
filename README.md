@@ -24,11 +24,12 @@ AnyDownload is a browser extension powered by [yt-dlp][yt-dlp]. It runs 100% loc
 | Browser | Install Method |
 | --- | --- |
 | Firefox | Install from **[Firefox Add-ons][amo-link]** |
+| Chrome | Install from **[Chrome Web Store][chrome-link]** |
 | Microsoft Edge | Install from **[Edge Add-ons][edge-link]** |
-| Other Chromium-based (Chrome, Brave, etc.) | See instructions below |
+| Other Chromium-based (Brave, Opera, etc) | See instructions below |
 
 <a name="chromium-install"></a>
-### Chromium-based browsers (Chrome, Brave, etc.)
+### Chromium-based browsers (Brave, Opera, etc.) OR Youtube support on Chrome
 
 1. Download `anydownload-<version>-chrome.zip` from the [releases][Releases] page.
 2. Extract the zip file.
@@ -116,6 +117,7 @@ AnyDownload is licensed under the [GNU General Public License v3.0](LICENSE.txt)
 [Releases]: https://github.com/devofthedark/AnyDownload/releases
 [pyodide]: https://pyodide.org/
 [mediabunny]: https://github.com/Vanilagy/mediabunny
-[amo-link]: https://addons.mozilla.org/en-US/firefox/addon/anydownload?utm_source=github.com&utm_medium=readme&utm_content=readme-link&utm_campaign=github-readme
+[amo-link]: https://addons.mozilla.org/en-US/firefox/addon/anydownload
 [edge-link]: https://microsoftedge.microsoft.com/addons/detail/anydownload/icpkdhomdhnooolmlgipoiaejfoadcfb
+[chrome-link]: https://chromewebstore.google.com/detail/anydownload/mdoljjlgpiambkbjmfbbnjikjpehgdfp
 
