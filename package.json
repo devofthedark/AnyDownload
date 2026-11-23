@@ -13,7 +13,7 @@
     "@mediabunny/flac-encoder": "1.66.2",
     "@mediabunny/mp3-encoder": "1.66.2",
     "mediabunny": "1.66.2",
-    "pyodide": "314.0.7"
+    "pyodide": "314.0.8"
   },
   "engines": {
     "node": ">=20.11"
