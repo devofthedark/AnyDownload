@@ -48,11 +48,13 @@ Copyright (c) 2026-present, Vanilagy and contributors
 Includes the @mediabunny/mp3-encoder, @mediabunny/aac-encoder and
 @mediabunny/flac-encoder packages.
 
-AnyDownload modifies the three encoder files: the worker that each one embeds
-as a string is moved into its own file (mediabunny-<codec>-encoder.worker.js),
-and the encoder loads it from there. The change is made by
-scripts/unblob-encoder-workers.mjs in AnyDownload's source code:
-https://github.com/devofthedark/AnyDownload
+Each encoder package also ships its worker as a separate file,
+mediabunny-<codec>-encoder.worker.js. These worker files are part of Mediabunny
+and are covered by the Mozilla Public License 2.0 above, although they carry no
+license header of their own. Each one also contains a WebAssembly build of a
+codec library, listed in sections 2-4 below.
+
+AnyDownload uses all of these files unmodified.
 
 ==============================================================================
 2. LAME MP3 encoder

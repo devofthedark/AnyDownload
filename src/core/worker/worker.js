@@ -8,6 +8,11 @@ importScripts(
     "/core/worker/memory-fs.js",
     "/core/worker/mediabunny-merge.js"
 )
+// The encoders start their worker from a blob: URL unless given a file. The extension CSP
+// (worker-src 'self') blocks blob: workers, so point them at the files scripts/vendor.mjs copies.
+for (const codec of ["mp3", "aac", "flac"]) {
+    self[Symbol.for(`@mediabunny/${codec}-encoder:workerUrl`)] = `/libs/mediabunny/mediabunny-${codec}-encoder.worker.js`;
+}
 const worker = createNode("worker");
 worker.connect("iframe", workerLink(self));
 worker.route("sw", "iframe");

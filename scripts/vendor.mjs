@@ -8,7 +8,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { unblobEncoderWorkers } from './unblob-encoder-workers.mjs';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const LIBS = path.join(ROOT, 'libs');
@@ -49,11 +48,13 @@ function vendorMediabunny() {
     const dir = path.join(LIBS, 'mediabunny');
     // the .cjs bundle is a plain script that defines the `Mediabunny` global, as importScripts needs
     copy(path.join(pkgDir('mediabunny'), 'dist/bundles/mediabunny.cjs'), path.join(dir, 'mediabunny.js'));
+    // Each encoder also ships its worker as its own file. The extension CSP doesn't allow the blob:
+    // worker the encoder starts by default, so worker.js points the encoders at these instead.
     for (const codec of ['mp3', 'aac', 'flac']) {
-        const file = `mediabunny-${codec}-encoder.js`;
-        copy(path.join(pkgDir(`@mediabunny/${codec}-encoder`), 'dist/bundles', file), path.join(dir, file));
+        for (const file of [`mediabunny-${codec}-encoder.js`, `mediabunny-${codec}-encoder.worker.js`]) {
+            copy(path.join(pkgDir(`@mediabunny/${codec}-encoder`), 'dist/bundles', file), path.join(dir, file));
+        }
     }
-    unblobEncoderWorkers(dir, '/libs/mediabunny');
 }
 
 function vendorPyodide() {
